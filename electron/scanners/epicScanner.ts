@@ -1,0 +1,47 @@
+import fs from 'fs';
+import path from 'path';
+import { ScanResult } from '../../src/types/game';
+
+export async function scanEpicGames(): Promise<ScanResult[]> {
+  const results: ScanResult[] = [];
+  const manifestsDir = 'C:\\ProgramData\\Epic\\EpicGamesLauncher\\Data\\Manifests';
+
+  if (!fs.existsSync(manifestsDir)) {
+    return results;
+  }
+
+  try {
+    const files = fs.readdirSync(manifestsDir);
+    for (const file of files) {
+      if (!file.endsWith('.item')) continue;
+
+      const filePath = path.join(manifestsDir, file);
+      try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const manifest = JSON.parse(content);
+
+        const title = manifest.DisplayName;
+        const installLoc = manifest.InstallLocation;
+        const launchExe = manifest.LaunchExecutable;
+
+        if (title && installLoc) {
+          const fullExePath = launchExe ? path.join(installLoc, launchExe) : installLoc;
+          results.push({
+            title,
+            executablePath: fs.existsSync(fullExePath) ? fullExePath : `com.epicgames.launcher://apps/${manifest.AppName}?action=launch&silent=true`,
+            platform: 'epic',
+            installPath: installLoc,
+            description: `Installed via Epic Games Launcher in ${installLoc}`,
+            genres: ['Action', 'Epic Store'],
+          });
+        }
+      } catch (err) {
+        // Skip unreadable manifest
+      }
+    }
+  } catch (err) {
+    console.error('Error scanning Epic Games:', err);
+  }
+
+  return results;
+}
