@@ -44,6 +44,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenAddGame,
   onOpenScanner,
   onOpenStoreLinks,
+  onResetData,
 }) => {
   const platforms: { id: GamePlatform | 'all'; name: string; icon: string; color: string }[] = [
     { id: 'all', name: 'All Sources', icon: '🌐', color: 'text-slate-300' },
