@@ -8,6 +8,7 @@ import { AddGameModal } from './components/AddGameModal';
 import { EditGameModal } from './components/EditGameModal';
 import { ScannerModal } from './components/ScannerModal';
 import { StoreIntegrationsModal } from './components/StoreIntegrationsModal';
+import { ArtworkPickerModal } from './components/ArtworkPickerModal';
 import { Game, GamePlatform } from './types/game';
 
 export const App: React.FC = () => {
@@ -20,6 +21,7 @@ export const App: React.FC = () => {
   // Modals state
   const [selectedGameForDetail, setSelectedGameForDetail] = useState<Game | null>(null);
   const [selectedGameForEdit, setSelectedGameForEdit] = useState<Game | null>(null);
+  const [artworkPickerGame, setArtworkPickerGame] = useState<Game | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isScannerModalOpen, setIsScannerModalOpen] = useState(false);
   const [isStoreLinksModalOpen, setIsStoreLinksModalOpen] = useState(false);
@@ -179,6 +181,41 @@ export const App: React.FC = () => {
     showToast(`Updated details for ${updatedGame.title}.`);
   };
 
+  const handleSaveArtwork = async (gameId: string, coverUrl: string, bannerUrl: string) => {
+    // Cache remote images in background so they are saved to hard drive
+    let finalCover = coverUrl;
+    let finalBanner = bannerUrl;
+
+    if (window.api?.cacheImage) {
+      if (coverUrl.startsWith('http')) {
+        window.api.cacheImage(coverUrl, 'cover', gameId).then((cached) => {
+          setGames((prev) =>
+            prev.map((g) => (g.id === gameId ? { ...g, coverUrl: cached } : g))
+          );
+        });
+      }
+      if (bannerUrl.startsWith('http')) {
+        window.api.cacheImage(bannerUrl, 'banner', gameId).then((cached) => {
+          setGames((prev) =>
+            prev.map((g) => (g.id === gameId ? { ...g, bannerUrl: cached } : g))
+          );
+        });
+      }
+    }
+
+    const updated = games.map((g) =>
+      g.id === gameId ? { ...g, coverUrl: finalCover, bannerUrl: finalBanner } : g
+    );
+    saveGamesToStore(updated);
+
+    if (selectedGameForDetail?.id === gameId) {
+      setSelectedGameForDetail((prev) =>
+        prev ? { ...prev, coverUrl: finalCover, bannerUrl: finalBanner } : null
+      );
+    }
+    showToast('Artwork updated and cached successfully.');
+  };
+
   const handleDeleteGame = (gameId: string) => {
     const game = games.find((g) => g.id === gameId);
     if (window.confirm(`Are you sure you want to remove "${game?.title}" from your launcher library?`)) {
@@ -259,6 +296,7 @@ export const App: React.FC = () => {
               onInstallGame={handleInstallGame}
               onToggleFavorite={handleToggleFavorite}
               onEditGame={handleEditGame}
+              onOpenArtworkPicker={(g) => setArtworkPickerGame(g)}
               onOpenAddGame={() => setIsAddModalOpen(true)}
               onOpenScanner={() => setIsScannerModalOpen(true)}
             />
@@ -277,6 +315,7 @@ export const App: React.FC = () => {
           onEditGame={(g) => setSelectedGameForEdit(g)}
           onDeleteGame={handleDeleteGame}
           onToggleInstalled={handleToggleInstalled}
+          onOpenArtworkPicker={(g) => setArtworkPickerGame(g)}
         />
       )}
 
@@ -292,6 +331,14 @@ export const App: React.FC = () => {
           game={selectedGameForEdit}
           onClose={() => setSelectedGameForEdit(null)}
           onSave={handleSaveEdit}
+        />
+      )}
+
+      {artworkPickerGame && (
+        <ArtworkPickerModal
+          game={artworkPickerGame}
+          onClose={() => setArtworkPickerGame(null)}
+          onSaveArtwork={handleSaveArtwork}
         />
       )}
 

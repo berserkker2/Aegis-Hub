@@ -23,6 +23,7 @@ interface GameGridProps {
   onInstallGame?: (game: Game, e: React.MouseEvent) => void;
   onToggleFavorite: (gameId: string, e: React.MouseEvent) => void;
   onEditGame: (game: Game, e: React.MouseEvent) => void;
+  onOpenArtworkPicker?: (game: Game, e: React.MouseEvent) => void;
   onOpenAddGame: () => void;
   onOpenScanner: () => void;
 }
@@ -39,6 +40,7 @@ export const GameGrid: React.FC<GameGridProps> = ({
   onInstallGame,
   onToggleFavorite,
   onEditGame,
+  onOpenArtworkPicker,
   onOpenAddGame,
   onOpenScanner,
 }) => {
@@ -217,6 +219,7 @@ export const GameGrid: React.FC<GameGridProps> = ({
               onInstallGame={onInstallGame}
               onToggleFavorite={onToggleFavorite}
               onEditGame={onEditGame}
+              onOpenArtworkPicker={onOpenArtworkPicker}
             />
           ))}
         </div>

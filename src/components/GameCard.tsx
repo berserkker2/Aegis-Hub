@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Star, MoreVertical, Clock, Download, Cloud } from 'lucide-react';
+import { Play, Star, MoreVertical, Clock, Download, Cloud, Image as ImageIcon } from 'lucide-react';
 import { Game } from '../types/game';
 import { formatPlaytime, getPlatformBadge } from '../utils/formatters';
 import { GameImage } from './GameImage';
@@ -11,6 +11,7 @@ interface GameCardProps {
   onInstallGame?: (game: Game, e: React.MouseEvent) => void;
   onToggleFavorite: (gameId: string, e: React.MouseEvent) => void;
   onEditGame: (game: Game, e: React.MouseEvent) => void;
+  onOpenArtworkPicker?: (game: Game, e: React.MouseEvent) => void;
 }
 
 export const GameCard: React.FC<GameCardProps> = ({
@@ -20,6 +21,7 @@ export const GameCard: React.FC<GameCardProps> = ({
   onInstallGame,
   onToggleFavorite,
   onEditGame,
+  onOpenArtworkPicker,
 }) => {
   const badge = getPlatformBadge(game.platform);
   const isInstalled = game.installed !== false;
@@ -74,6 +76,18 @@ export const GameCard: React.FC<GameCardProps> = ({
                 }`}
               />
             </button>
+            {onOpenArtworkPicker && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenArtworkPicker(game, e);
+                }}
+                title="Change or search artwork"
+                className="w-7 h-7 rounded-full bg-slate-950/70 hover:bg-slate-900 backdrop-blur-md border border-slate-700/60 flex items-center justify-center text-slate-400 hover:text-blue-400 transition opacity-0 group-hover:opacity-100"
+              >
+                <ImageIcon className="w-3.5 h-3.5" />
+              </button>
+            )}
             <button
               onClick={(e) => onEditGame(game, e)}
               title="Edit game info"

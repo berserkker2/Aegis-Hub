@@ -79,6 +79,7 @@ export async function scanSteamGames(): Promise<ScanResult[]> {
           if (appIdMatch && nameMatch) {
             const appId = appIdMatch[1];
             const name = nameMatch[1];
+
             // Filter out Steamworks Common Redistributables, proton, etc.
             if (
               name.includes('Steamworks Common') ||
@@ -93,15 +94,30 @@ export async function scanSteamGames(): Promise<ScanResult[]> {
               ? path.join(steamappsDir, 'common', installDirMatch[1])
               : undefined;
 
+            // Check if local cache has high-res artwork on disk
+            let coverUrl = `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_600x900.jpg`;
+            let bannerUrl = `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_hero.jpg`;
+
+            const localCoverPath = path.join(steamPath, 'appcache', 'librarycache', appId, 'library_600x900.jpg');
+            const localHeroPath = path.join(steamPath, 'appcache', 'librarycache', appId, 'library_hero.jpg');
+
+            if (fs.existsSync(localCoverPath)) {
+              coverUrl = `nexus-media:///${localCoverPath.replace(/\\/g, '/')}`;
+            }
+            if (fs.existsSync(localHeroPath)) {
+              bannerUrl = `nexus-media:///${localHeroPath.replace(/\\/g, '/')}`;
+            }
+
             results.push({
               title: name,
               executablePath: `steam://rungameid/${appId}`,
               platform: 'steam',
               installPath: installFolder,
-              coverUrl: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_600x900.jpg`,
-              bannerUrl: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/header.jpg`,
+              coverUrl,
+              bannerUrl,
               description: `Steam Game (AppID: ${appId}). Launches seamlessly without requiring browser login.`,
               genres: ['Steam Library'],
+              installed: true,
             });
           }
         } catch {

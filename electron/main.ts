@@ -1,6 +1,7 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import { pathToFileURL } from 'url';
 import { spawn } from 'child_process';
 import { LauncherStore } from './store';
 import { scanEpicGames } from './scanners/epicScanner';
@@ -9,11 +10,29 @@ import { scanSteamGames } from './scanners/steamScanner';
 import { scanWindowsRegistryGames } from './scanners/registryScanner';
 import { lookupGameArtwork } from './services/artworkService';
 import { StoreAccountService } from './services/storeAccountService';
+import { StoreAuthManager } from './services/storeAuthManager';
+import { ImageManager } from './services/imageManager';
 import { Game, GamePlatform, LauncherSettings, ScanResult } from '../src/types/game';
+
+// Register custom protocol for local media before app is ready
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'nexus-media',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      bypassCSP: true,
+      corsEnabled: true,
+    },
+  },
+]);
 
 let mainWindow: BrowserWindow | null = null;
 const store = new LauncherStore();
 const accountService = new StoreAccountService();
+const authManager = new StoreAuthManager();
+const imageManager = new ImageManager();
 
 // Track running games: gameId -> { startTime: number, process?: any }
 const runningGames = new Map<string, { startTime: number; process?: any }>();
@@ -56,6 +75,16 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Handle nexus-media:// local image loading
+  protocol.handle('nexus-media', (request) => {
+    let decoded = decodeURIComponent(request.url.replace(/^nexus-media:\/\/(local\/)?/, ''));
+    if (decoded.startsWith('/') && decoded.charAt(2) === ':') {
+      decoded = decoded.substring(1);
+    }
+    const fileUrl = pathToFileURL(decoded).toString();
+    return net.fetch(fileUrl);
+  });
+
   createWindow();
 
   app.on('activate', () => {
@@ -113,14 +142,70 @@ ipcMain.handle('save-settings', (_event, settings: LauncherSettings) => {
   return true;
 });
 
-// Artwork Lookup IPC
+// Artwork Lookup & Caching IPC
 ipcMain.handle('search-artwork', async (_event, title: string) => {
   return await lookupGameArtwork(title);
+});
+
+ipcMain.handle('search-artwork-suggestions', async (_event, title: string) => {
+  return await imageManager.searchArtworkSuggestions(title);
+});
+
+ipcMain.handle('cache-image', async (_event, { url, type, gameId }: { url: string; type: 'cover' | 'banner'; gameId: string }) => {
+  return await imageManager.cacheRemoteImage(url, type, gameId);
+});
+
+ipcMain.handle('to-media-url', (_event, localPath: string) => {
+  return imageManager.toMediaUrl(localPath);
 });
 
 // Store Accounts & Cloud Sync IPC
 ipcMain.handle('get-store-accounts', () => {
   return accountService.getAccounts();
+});
+
+ipcMain.handle('detect-local-accounts', () => {
+  return authManager.detectLocalAccounts();
+});
+
+// Real OAuth / Webview Login Window IPC
+ipcMain.handle('open-store-login', async (_event, platform: GamePlatform) => {
+  try {
+    const result = await authManager.openStoreLoginWindow(mainWindow, platform);
+
+    // Save account state
+    const accounts = accountService.getAccounts();
+    const index = accounts.findIndex(a => a.platform === platform);
+    if (index >= 0) {
+      accounts[index] = result.account;
+    } else {
+      accounts.push(result.account);
+    }
+    accountService.saveAccounts(accounts);
+
+    // Merge newly synced cloud games into library
+    const currentGames = store.getGames();
+    const currentTitles = new Set(currentGames.map(g => g.title.toLowerCase().trim()));
+    const currentStoreIds = new Set(currentGames.filter(g => g.storeId).map(g => `${g.platform}-${g.storeId}`));
+
+    const toAdd: Game[] = [];
+    for (const cloudGame of result.games) {
+      const key = `${cloudGame.platform}-${cloudGame.storeId}`;
+      if (!currentTitles.has(cloudGame.title.toLowerCase().trim()) && !currentStoreIds.has(key)) {
+        toAdd.push(cloudGame);
+      }
+    }
+
+    if (toAdd.length > 0) {
+      const merged = [...currentGames, ...toAdd];
+      store.saveGames(merged);
+    }
+
+    return result;
+  } catch (err: any) {
+    console.error('Store login error:', err);
+    throw err;
+  }
 });
 
 ipcMain.handle('sync-store-account', async (_event, { platform, identifier, apiKey }: { platform: GamePlatform; identifier: string; apiKey?: string }) => {
@@ -156,7 +241,7 @@ ipcMain.handle('sync-store-account', async (_event, { platform, identifier, apiK
   }
   accountService.saveAccounts(accounts);
 
-  // Merge newly synced cloud games into library without duplicating existing ones
+  // Merge newly synced cloud games into library
   const currentGames = store.getGames();
   const currentTitles = new Set(currentGames.map(g => g.title.toLowerCase().trim()));
   const currentStoreIds = new Set(currentGames.filter(g => g.storeId).map(g => `${g.platform}-${g.storeId}`));
@@ -223,7 +308,6 @@ ipcMain.handle('install-game', async (_event, gameId: string) => {
     return { success: true };
   }
 
-  // Fallback to store protocol if storeId exists
   if (game.platform === 'steam' && game.storeId) {
     await shell.openExternal(`steam://install/${game.storeId}`);
     return { success: true };
@@ -241,7 +325,6 @@ ipcMain.handle('launch-game', async (_event, gameId: string) => {
     return { success: false, message: 'Game not found in library.' };
   }
 
-  // If game is not installed, trigger install instead
   if (!game.installed && game.installUrl) {
     await shell.openExternal(game.installUrl);
     return { success: true, message: 'Prompted store installer.' };
@@ -251,7 +334,6 @@ ipcMain.handle('launch-game', async (_event, gameId: string) => {
   const startTime = Date.now();
 
   try {
-    // Check if protocol URI (steam://, com.epicgames.launcher://, etc.)
     if (execPath.includes('://')) {
       await shell.openExternal(execPath);
       runningGames.set(gameId, { startTime });
@@ -268,7 +350,6 @@ ipcMain.handle('launch-game', async (_event, gameId: string) => {
       return { success: true };
     }
 
-    // Local Executable
     if (!fs.existsSync(execPath)) {
       return { success: false, message: `Executable not found at path: ${execPath}` };
     }
@@ -324,7 +405,6 @@ ipcMain.handle('scan-pc', async () => {
 
   const allFound = [...epicGames, ...gogGames, ...steamGames, ...registryGames];
 
-  // Deduplicate by normalized title
   const uniqueMap = new Map<string, ScanResult>();
   for (const item of allFound) {
     const key = item.title.toLowerCase().trim();

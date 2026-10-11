@@ -6,13 +6,14 @@ import {
   FolderOpen,
   CheckSquare,
   Square,
-  Check,
-  AlertCircle,
   RefreshCw,
-  Plus
+  Plus,
+  Image,
+  Check
 } from 'lucide-react';
 import { Game, ScanResult } from '../types/game';
 import { getPlatformBadge, getPlaceholderCover, getPlaceholderBanner } from '../utils/formatters';
+import { GameImage } from './GameImage';
 
 interface ScannerModalProps {
   onClose: () => void;
@@ -30,6 +31,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [customFolder, setCustomFolder] = useState('');
   const [hasScanned, setHasScanned] = useState(false);
+  const [editingArtIndex, setEditingArtIndex] = useState<number | null>(null);
 
   const existingExecutables = new Set(
     existingGames.map((g) => g.executablePath.toLowerCase().trim())
@@ -47,7 +49,6 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         results = await window.api.scanPC();
       }
 
-      // Filter out games already in library by executable or title
       const newItems = results.filter(
         (r) =>
           !existingExecutables.has(r.executablePath.toLowerCase().trim()) &&
@@ -55,7 +56,6 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       );
 
       setScanResults(newItems);
-      // Select all new items by default
       setSelectedIndices(new Set(newItems.map((_, i) => i)));
       setHasScanned(true);
     } catch (err) {
@@ -108,6 +108,22 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
     setSelectedIndices(updated);
   };
 
+  const handlePickLocalCoverForScanItem = async (index: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (window.api?.selectFile) {
+      const file = await window.api.selectFile([
+        { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp'] },
+      ]);
+      if (file) {
+        setScanResults((prev) =>
+          prev.map((item, idx) =>
+            idx === index ? { ...item, coverUrl: file } : item
+          )
+        );
+      }
+    }
+  };
+
   const handleImport = () => {
     const toImport: Game[] = [];
     selectedIndices.forEach((idx) => {
@@ -126,6 +142,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
           tags: ['Auto-Detected', item.platform],
           favorite: false,
           hidden: false,
+          installed: true,
           playtimeMinutes: 0,
           addedDate: new Date().toISOString(),
         });
@@ -138,7 +155,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 overflow-hidden flex flex-col max-h-[85vh]">
+      <div className="relative w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 overflow-hidden flex flex-col max-h-[88vh]">
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-3">
@@ -148,7 +165,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
             <div>
               <h2 className="text-base font-bold text-white">Smart PC Game Scanner</h2>
               <p className="text-xs text-slate-400">
-                Searching Steam manifests, Epic Games, GOG Galaxy & Windows registry
+                Detecting Steam libraries, Epic Games manifests, GOG Galaxy & Windows registry
               </p>
             </div>
           </div>
@@ -160,7 +177,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
           </button>
         </div>
 
-        {/* Action strip: scan again or pick custom folder */}
+        {/* Action strip */}
         <div className="flex items-center justify-between py-3 border-b border-slate-800/80 shrink-0 text-xs">
           <div className="flex items-center gap-2">
             <button
@@ -191,8 +208,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
           )}
         </div>
 
-        {/* Scan Results List */}
-        <div className="flex-1 overflow-y-auto py-3 space-y-2 min-h-[220px]">
+        {/* Scan Results List with Thumbnail Art Preview */}
+        <div className="flex-1 overflow-y-auto py-3 space-y-2.5 min-h-[240px]">
           {scanning ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <RefreshCw className="w-8 h-8 text-blue-500 animate-spin mb-3" />
@@ -220,13 +237,13 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                 <div
                   key={`${result.executablePath}-${idx}`}
                   onClick={() => toggleIndex(idx)}
-                  className={`flex items-center justify-between p-3 rounded-xl border transition cursor-pointer ${
+                  className={`flex items-center justify-between p-2.5 rounded-xl border transition cursor-pointer ${
                     isSelected
                       ? 'bg-blue-950/20 border-blue-500/40 text-white'
                       : 'bg-slate-950/50 border-slate-800 text-slate-400 hover:border-slate-700'
                   }`}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
                     <button
                       type="button"
                       className="text-blue-400 shrink-0"
@@ -242,10 +259,22 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                       )}
                     </button>
 
-                    <div className="min-w-0">
+                    {/* Thumbnail Art Preview */}
+                    <div className="w-10 aspect-[2/3] rounded-lg overflow-hidden bg-slate-900 border border-slate-700/80 shrink-0">
+                      <GameImage
+                        src={result.coverUrl || ''}
+                        alt={result.title}
+                        title={result.title}
+                        platform={result.platform}
+                        type="cover"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
                       <div className="text-xs font-bold text-slate-100 truncate flex items-center gap-2">
-                        <span>{result.title}</span>
-                        <span className={`text-[10px] font-semibold px-2 py-0.2 rounded-full border ${badge.bg} ${badge.color}`}>
+                        <span className="truncate">{result.title}</span>
+                        <span className={`text-[9px] font-semibold px-2 py-0.2 rounded-full border shrink-0 ${badge.bg} ${badge.color}`}>
                           {badge.name}
                         </span>
                       </div>
@@ -253,6 +282,19 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                         {result.executablePath}
                       </div>
                     </div>
+                  </div>
+
+                  {/* Artwork Customization Button during import */}
+                  <div className="shrink-0 ml-2">
+                    <button
+                      type="button"
+                      onClick={(e) => handlePickLocalCoverForScanItem(idx, e)}
+                      title="Select custom cover image before importing"
+                      className="px-2 py-1 text-[11px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 flex items-center gap-1 transition"
+                    >
+                      <Image className="w-3 h-3 text-blue-400" />
+                      <span className="hidden sm:inline">Change Art</span>
+                    </button>
                   </div>
                 </div>
               );

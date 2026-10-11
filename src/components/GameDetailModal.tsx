@@ -27,6 +27,7 @@ interface GameDetailModalProps {
   onEditGame: (game: Game) => void;
   onDeleteGame: (gameId: string) => void;
   onToggleInstalled?: (gameId: string) => void;
+  onOpenArtworkPicker?: (game: Game) => void;
 }
 
 export const GameDetailModal: React.FC<GameDetailModalProps> = ({
@@ -38,6 +39,7 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
   onEditGame,
   onDeleteGame,
   onToggleInstalled,
+  onOpenArtworkPicker,
 }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -183,12 +185,23 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
                     <span>{game.favorite ? 'Favorited' : 'Favorite'}</span>
                   </button>
 
+                  {onOpenArtworkPicker && (
+                    <button
+                      onClick={() => onOpenArtworkPicker(game)}
+                      className="flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-semibold bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 transition"
+                      title="Choose or search official box arts and wallpapers"
+                    >
+                      <Sparkles className="w-4 h-4 text-blue-400" />
+                      <span>Choose Artwork</span>
+                    </button>
+                  )}
+
                   <button
                     onClick={() => onEditGame(game)}
                     className="flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
                   >
                     <Edit3 className="w-4 h-4" />
-                    <span>Customize Art</span>
+                    <span>Edit Info</span>
                   </button>
 
                   {onToggleInstalled && (
