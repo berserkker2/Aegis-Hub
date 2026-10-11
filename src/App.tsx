@@ -95,6 +95,11 @@ export const App: React.FC = () => {
   const handleLaunchGame = async (game: Game, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
 
+    // If not installed, trigger install flow
+    if (game.installed === false) {
+      return handleInstallGame(game, e);
+    }
+
     // Mark running in UI immediately
     const updated = games.map((g) =>
       g.id === game.id
@@ -114,7 +119,6 @@ export const App: React.FC = () => {
       const res = await window.api.launchGame(game.id);
       if (!res.success) {
         showToast(`Failed to launch: ${res.message || 'Executable error'}`);
-        // Reset running state
         saveGamesToStore(
           games.map((g) => (g.id === game.id ? { ...g, isRunning: false } : g))
         );
@@ -124,6 +128,14 @@ export const App: React.FC = () => {
       }
     } else {
       showToast(`Launching ${game.title}...`);
+    }
+  };
+
+  const handleInstallGame = async (game: Game, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    showToast(`Prompting ${game.platform.toUpperCase()} store installer for ${game.title}...`);
+    if (window.api?.installGame) {
+      await window.api.installGame(game.id);
     }
   };
 
@@ -138,6 +150,19 @@ export const App: React.FC = () => {
         prev ? { ...prev, favorite: !prev.favorite } : null
       );
     }
+  };
+
+  const handleToggleInstalled = (gameId: string) => {
+    const updated = games.map((g) =>
+      g.id === gameId ? { ...g, installed: g.installed === false ? true : false } : g
+    );
+    saveGamesToStore(updated);
+    if (selectedGameForDetail?.id === gameId) {
+      setSelectedGameForDetail((prev) =>
+        prev ? { ...prev, installed: prev.installed === false ? true : false } : null
+      );
+    }
+    showToast('Updated installation status.');
   };
 
   const handleEditGame = (game: Game, e?: React.MouseEvent) => {
@@ -179,6 +204,8 @@ export const App: React.FC = () => {
 
   const favoriteCount = games.filter((g) => g.favorite).length;
   const recentCount = games.filter((g) => g.lastPlayed).length;
+  const installedCount = games.filter((g) => g.installed !== false).length;
+  const cloudCount = games.filter((g) => g.installed === false).length;
 
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans select-none">
@@ -199,17 +226,20 @@ export const App: React.FC = () => {
           selectedPlatform={selectedPlatform}
           onSelectPlatform={setSelectedPlatform}
           totalGames={games.length}
+          installedCount={installedCount}
+          cloudCount={cloudCount}
           favoriteGamesCount={favoriteCount}
           recentGamesCount={recentCount}
           onOpenAddGame={() => setIsAddModalOpen(true)}
           onOpenScanner={() => setIsScannerModalOpen(true)}
+          onOpenStoreLinks={() => setIsStoreLinksModalOpen(true)}
         />
 
         {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto p-6 lg:p-8 bg-gradient-to-b from-slate-900/50 via-slate-950 to-slate-950">
           <div className="max-w-[1700px] mx-auto space-y-6">
             {/* Top Shelf: Recently Played Games (GOG Galaxy style hero carousel) */}
-            {selectedFilter !== 'favorites' && !searchQuery && (
+            {selectedFilter !== 'favorites' && selectedFilter !== 'cloud' && !searchQuery && (
               <RecentlyPlayedShelf
                 games={games}
                 onSelectGame={(g) => setSelectedGameForDetail(g)}
@@ -226,6 +256,7 @@ export const App: React.FC = () => {
               selectedPlatform={selectedPlatform}
               onSelectGame={(g) => setSelectedGameForDetail(g)}
               onLaunchGame={handleLaunchGame}
+              onInstallGame={handleInstallGame}
               onToggleFavorite={handleToggleFavorite}
               onEditGame={handleEditGame}
               onOpenAddGame={() => setIsAddModalOpen(true)}
@@ -241,9 +272,11 @@ export const App: React.FC = () => {
           game={selectedGameForDetail}
           onClose={() => setSelectedGameForDetail(null)}
           onLaunchGame={handleLaunchGame}
+          onInstallGame={handleInstallGame}
           onToggleFavorite={handleToggleFavorite}
           onEditGame={(g) => setSelectedGameForEdit(g)}
           onDeleteGame={handleDeleteGame}
+          onToggleInstalled={handleToggleInstalled}
         />
       )}
 
@@ -273,7 +306,7 @@ export const App: React.FC = () => {
       {isStoreLinksModalOpen && (
         <StoreIntegrationsModal
           onClose={() => setIsStoreLinksModalOpen(false)}
-          onTriggerScan={() => setIsScannerModalOpen(true)}
+          onGamesImported={handleImportScannedGames}
         />
       )}
 

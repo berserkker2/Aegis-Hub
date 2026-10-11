@@ -1,7 +1,8 @@
 import React from 'react';
-import { Play, Clock, Star, Flame, ChevronRight } from 'lucide-react';
+import { Play, Clock, Star, ChevronRight } from 'lucide-react';
 import { Game } from '../types/game';
 import { formatPlaytime, formatRelativeDate, getPlatformBadge } from '../utils/formatters';
+import { GameImage } from './GameImage';
 
 interface RecentlyPlayedShelfProps {
   games: Game[];
@@ -16,7 +17,6 @@ export const RecentlyPlayedShelf: React.FC<RecentlyPlayedShelfProps> = ({
   onLaunchGame,
   onToggleFavorite,
 }) => {
-  // Sort by lastPlayed descending, pick up to 5
   const recentGames = [...games]
     .filter(g => g.lastPlayed)
     .sort((a, b) => new Date(b.lastPlayed!).getTime() - new Date(a.lastPlayed!).getTime())
@@ -51,17 +51,21 @@ export const RecentlyPlayedShelf: React.FC<RecentlyPlayedShelfProps> = ({
               onClick={() => onSelectGame(game)}
               className="group relative h-48 rounded-xl overflow-hidden bg-slate-900 border border-slate-800/80 hover:border-blue-500/50 transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/10 cursor-pointer flex flex-col justify-between p-3.5"
             >
-              {/* Background Banner with zoom effect */}
-              <div
-                className="absolute inset-0 bg-cover bg-center transition-transform duration-500 ease-out group-hover:scale-105"
-                style={{
-                  backgroundImage: `url("${game.bannerUrl || game.coverUrl}")`,
-                }}
-              />
+              {/* Distinct Background Banner */}
+              <div className="absolute inset-0 overflow-hidden">
+                <GameImage
+                  src={game.bannerUrl || game.coverUrl}
+                  alt={game.title}
+                  title={game.title}
+                  platform={game.platform}
+                  type="banner"
+                  className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                />
+              </div>
 
-              {/* Multi-step gradient overlay for readability and gaming vibe */}
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/70 to-slate-900/40" />
-              <div className="absolute inset-0 bg-blue-950/10 group-hover:bg-blue-600/10 transition-colors duration-300" />
+              {/* Multi-step gradient overlay */}
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/70 to-slate-900/40 pointer-events-none" />
+              <div className="absolute inset-0 bg-blue-950/10 group-hover:bg-blue-600/10 transition-colors duration-300 pointer-events-none" />
 
               {/* Top Row: Platform Badge & Favorite Button */}
               <div className="relative z-10 flex items-center justify-between">
@@ -112,7 +116,7 @@ export const RecentlyPlayedShelf: React.FC<RecentlyPlayedShelfProps> = ({
                 </button>
               </div>
 
-              {/* Running indicator banner if active */}
+              {/* Running indicator */}
               {game.isRunning && (
                 <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[10px] font-semibold backdrop-blur-md">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />

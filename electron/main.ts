@@ -7,10 +7,13 @@ import { scanEpicGames } from './scanners/epicScanner';
 import { scanGogGames } from './scanners/gogScanner';
 import { scanSteamGames } from './scanners/steamScanner';
 import { scanWindowsRegistryGames } from './scanners/registryScanner';
-import { Game, GamePlatform, LauncherSettings, ScanResult, StoreAccountStatus } from '../src/types/game';
+import { lookupGameArtwork } from './services/artworkService';
+import { StoreAccountService } from './services/storeAccountService';
+import { Game, GamePlatform, LauncherSettings, ScanResult } from '../src/types/game';
 
 let mainWindow: BrowserWindow | null = null;
 const store = new LauncherStore();
+const accountService = new StoreAccountService();
 
 // Track running games: gameId -> { startTime: number, process?: any }
 const runningGames = new Map<string, { startTime: number; process?: any }>();
@@ -28,11 +31,10 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: false, // Allows loading local file:// covers or thumbnails
+      webSecurity: false,
     },
   });
 
-  // In development, load Vite dev server; otherwise load production build
   const indexPath = path.join(__dirname, '../dist/index.html');
   const isDev = process.env.NODE_ENV === 'development';
 
@@ -91,7 +93,6 @@ ipcMain.handle('is-maximized', () => {
 // Library Storage IPC
 ipcMain.handle('get-games', () => {
   const games = store.getGames();
-  // Annotate currently running state
   return games.map(g => ({
     ...g,
     isRunning: runningGames.has(g.id),
@@ -109,6 +110,82 @@ ipcMain.handle('get-settings', () => {
 
 ipcMain.handle('save-settings', (_event, settings: LauncherSettings) => {
   store.saveSettings(settings);
+  return true;
+});
+
+// Artwork Lookup IPC
+ipcMain.handle('search-artwork', async (_event, title: string) => {
+  return await lookupGameArtwork(title);
+});
+
+// Store Accounts & Cloud Sync IPC
+ipcMain.handle('get-store-accounts', () => {
+  return accountService.getAccounts();
+});
+
+ipcMain.handle('sync-store-account', async (_event, { platform, identifier, apiKey }: { platform: GamePlatform; identifier: string; apiKey?: string }) => {
+  let result: { account: any; games: Game[] };
+
+  switch (platform) {
+    case 'steam':
+      result = await accountService.syncSteamAccount(identifier, apiKey);
+      break;
+    case 'epic':
+      result = await accountService.syncEpicAccount(identifier);
+      break;
+    case 'gog':
+      result = await accountService.syncGogAccount(identifier);
+      break;
+    case 'ea':
+      result = await accountService.syncEaAccount(identifier);
+      break;
+    case 'ubisoft':
+      result = await accountService.syncUbisoftAccount(identifier);
+      break;
+    default:
+      throw new Error(`Unsupported platform ${platform}`);
+  }
+
+  // Update saved accounts list
+  const accounts = accountService.getAccounts();
+  const index = accounts.findIndex(a => a.platform === platform);
+  if (index >= 0) {
+    accounts[index] = result.account;
+  } else {
+    accounts.push(result.account);
+  }
+  accountService.saveAccounts(accounts);
+
+  // Merge newly synced cloud games into library without duplicating existing ones
+  const currentGames = store.getGames();
+  const currentTitles = new Set(currentGames.map(g => g.title.toLowerCase().trim()));
+  const currentStoreIds = new Set(currentGames.filter(g => g.storeId).map(g => `${g.platform}-${g.storeId}`));
+
+  const toAdd: Game[] = [];
+  for (const cloudGame of result.games) {
+    const key = `${cloudGame.platform}-${cloudGame.storeId}`;
+    if (!currentTitles.has(cloudGame.title.toLowerCase().trim()) && !currentStoreIds.has(key)) {
+      toAdd.push(cloudGame);
+    }
+  }
+
+  if (toAdd.length > 0) {
+    const merged = [...currentGames, ...toAdd];
+    store.saveGames(merged);
+  }
+
+  return result;
+});
+
+ipcMain.handle('disconnect-store-account', (_event, platform: GamePlatform) => {
+  const accounts = accountService.getAccounts();
+  const target = accounts.find(a => a.platform === platform);
+  if (target) {
+    target.connected = false;
+    target.accountIdentifier = undefined;
+    target.totalOwnedGames = 0;
+    accountService.saveAccounts(accounts);
+  }
   return true;
 });
 
@@ -135,6 +212,26 @@ ipcMain.handle('select-folder', async () => {
   return result.filePaths[0];
 });
 
+// Install Game IPC (for uninstalled cloud games)
+ipcMain.handle('install-game', async (_event, gameId: string) => {
+  const games = store.getGames();
+  const game = games.find(g => g.id === gameId);
+  if (!game) return { success: false, message: 'Game not found' };
+
+  if (game.installUrl) {
+    await shell.openExternal(game.installUrl);
+    return { success: true };
+  }
+
+  // Fallback to store protocol if storeId exists
+  if (game.platform === 'steam' && game.storeId) {
+    await shell.openExternal(`steam://install/${game.storeId}`);
+    return { success: true };
+  }
+
+  return { success: false, message: 'No installation URL available for this title.' };
+});
+
 // Launch Game IPC
 ipcMain.handle('launch-game', async (_event, gameId: string) => {
   const games = store.getGames();
@@ -142,6 +239,12 @@ ipcMain.handle('launch-game', async (_event, gameId: string) => {
 
   if (!game) {
     return { success: false, message: 'Game not found in library.' };
+  }
+
+  // If game is not installed, trigger install instead
+  if (!game.installed && game.installUrl) {
+    await shell.openExternal(game.installUrl);
+    return { success: true, message: 'Prompted store installer.' };
   }
 
   const execPath = game.executablePath;
@@ -154,11 +257,9 @@ ipcMain.handle('launch-game', async (_event, gameId: string) => {
       runningGames.set(gameId, { startTime });
       mainWindow?.webContents.send('game-status-changed', { gameId, isRunning: true });
 
-      // Update last played immediately
       game.lastPlayed = new Date().toISOString();
       store.saveGames(games);
 
-      // Simulate process tracking or clear after 10 seconds for protocol handlers
       setTimeout(() => {
         runningGames.delete(gameId);
         mainWindow?.webContents.send('game-status-changed', { gameId, isRunning: false, elapsedMinutes: 1 });
@@ -190,7 +291,6 @@ ipcMain.handle('launch-game', async (_event, gameId: string) => {
 
       runningGames.delete(gameId);
 
-      // Update total playtime
       const currentGames = store.getGames();
       const target = currentGames.find(g => g.id === gameId);
       if (target) {
@@ -223,7 +323,7 @@ ipcMain.handle('scan-pc', async () => {
   ]);
 
   const allFound = [...epicGames, ...gogGames, ...steamGames, ...registryGames];
-  
+
   // Deduplicate by normalized title
   const uniqueMap = new Map<string, ScanResult>();
   for (const item of allFound) {
@@ -250,26 +350,46 @@ ipcMain.handle('scan-folder', async (_event, dirPath: string) => {
           const files = fs.readdirSync(subDir);
           const exes = files.filter(f => f.toLowerCase().endsWith('.exe') && !f.toLowerCase().includes('unins'));
           if (exes.length > 0) {
+            const cleanTitle = entry.name.replace(/[-_]/g, ' ');
+            const art = (await lookupGameArtwork(cleanTitle)) || {
+              coverUrl: '',
+              bannerUrl: '',
+              genres: ['PC Game'],
+            };
+
             results.push({
-              title: entry.name.replace(/[-_]/g, ' '),
+              title: cleanTitle,
               executablePath: path.join(subDir, exes[0]),
               platform: 'manual',
               installPath: subDir,
+              coverUrl: art.coverUrl,
+              bannerUrl: art.bannerUrl,
               description: `Found in ${subDir}`,
-              genres: ['PC Game'],
+              genres: art.genres || ['PC Game'],
+              installed: true,
             });
           }
         } catch {
           // Skip
         }
       } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.exe')) {
+        const cleanTitle = path.parse(entry.name).name.replace(/[-_]/g, ' ');
+        const art = (await lookupGameArtwork(cleanTitle)) || {
+          coverUrl: '',
+          bannerUrl: '',
+          genres: ['PC Game'],
+        };
+
         results.push({
-          title: path.parse(entry.name).name.replace(/[-_]/g, ' '),
+          title: cleanTitle,
           executablePath: path.join(dirPath, entry.name),
           platform: 'manual',
           installPath: dirPath,
+          coverUrl: art.coverUrl,
+          bannerUrl: art.bannerUrl,
           description: `Executable in ${dirPath}`,
-          genres: ['PC Game'],
+          genres: art.genres || ['PC Game'],
+          installed: true,
         });
       }
     }
@@ -279,54 +399,3 @@ ipcMain.handle('scan-folder', async (_event, dirPath: string) => {
 
   return results;
 });
-
-// Store Account Statuses IPC
-ipcMain.handle('get-store-statuses', async () => {
-  const epicManifests = 'C:\\ProgramData\\Epic\\EpicGamesLauncher\\Data\\Manifests';
-  const gogDir = 'C:\\Program Files (x86)\\GOG Galaxy\\Games';
-  const steamDir = 'C:\\Program Files (x86)\\Steam';
-
-  const statuses: StoreAccountStatus[] = [
-    {
-      platform: 'steam',
-      name: 'Steam',
-      connected: fs.existsSync(steamDir),
-      detectedGamesCount: 0,
-      installPath: fs.existsSync(steamDir) ? steamDir : undefined,
-      description: 'Local Steam Library (Manifest & ACF auto-detection, no login expiration issues).',
-      color: '#1b2838',
-    },
-    {
-      platform: 'epic',
-      name: 'Epic Games Store',
-      connected: fs.existsSync(manifestsDirExists(epicManifests)),
-      detectedGamesCount: 0,
-      installPath: manifestsDirExists(epicManifests) ? 'C:\\ProgramData\\Epic' : undefined,
-      description: 'Epic Games Launcher manifest detector & URI launcher.',
-      color: '#2a2a2a',
-    },
-    {
-      platform: 'gog',
-      name: 'GOG Galaxy',
-      connected: fs.existsSync(gogDir),
-      detectedGamesCount: 0,
-      installPath: fs.existsSync(gogDir) ? gogDir : undefined,
-      description: 'GOG Galaxy & DRM-Free local game detector.',
-      color: '#6c2b96',
-    },
-    {
-      platform: 'manual',
-      name: 'Manual / Standalone',
-      connected: true,
-      detectedGamesCount: 0,
-      description: 'Direct executable links (.exe), DRM-free indie games, custom ROMs or shortcuts.',
-      color: '#3b82f6',
-    },
-  ];
-
-  return statuses;
-});
-
-function manifestsDirExists(p: string): string {
-  return fs.existsSync(p) ? p : '';
-}

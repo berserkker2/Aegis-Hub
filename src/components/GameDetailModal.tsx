@@ -2,38 +2,42 @@ import React, { useEffect } from 'react';
 import {
   X,
   Play,
+  Download,
   Star,
   Clock,
   Calendar,
   Building2,
   Folder,
-  Tag,
+  Cloud,
   Edit3,
   Trash2,
   CheckCircle2,
-  ExternalLink,
-  Flame,
   Award
 } from 'lucide-react';
 import { Game } from '../types/game';
 import { formatPlaytime, formatRelativeDate, getPlatformBadge } from '../utils/formatters';
+import { GameImage } from './GameImage';
 
 interface GameDetailModalProps {
   game: Game | null;
   onClose: () => void;
   onLaunchGame: (game: Game) => void;
+  onInstallGame?: (game: Game) => void;
   onToggleFavorite: (gameId: string) => void;
   onEditGame: (game: Game) => void;
   onDeleteGame: (gameId: string) => void;
+  onToggleInstalled?: (gameId: string) => void;
 }
 
 export const GameDetailModal: React.FC<GameDetailModalProps> = ({
   game,
   onClose,
   onLaunchGame,
+  onInstallGame,
   onToggleFavorite,
   onEditGame,
   onDeleteGame,
+  onToggleInstalled,
 }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -46,6 +50,7 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
   if (!game) return null;
 
   const badge = getPlatformBadge(game.platform);
+  const isInstalled = game.installed !== false;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 md:p-8 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
@@ -60,33 +65,49 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
 
         {/* Scrollable Content */}
         <div className="overflow-y-auto flex-1">
-          {/* Hero Banner Section */}
+          {/* Distinct Page Background / Hero Banner Section */}
           <div className="relative h-72 sm:h-84 md:h-96 w-full overflow-hidden bg-slate-950">
-            <img
-              src={game.bannerUrl || game.coverUrl}
-              alt={game.title}
+            <GameImage
+              src={game.bannerUrl}
+              alt={`${game.title} background`}
+              title={game.title}
+              platform={game.platform}
+              type="banner"
               className="w-full h-full object-cover object-center"
             />
-            {/* Dramatic layered gradients */}
+
+            {/* Ambient gradients */}
             <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/60 to-transparent" />
             <div className="absolute inset-0 bg-gradient-to-r from-slate-950/80 via-transparent to-slate-950/40" />
 
-            {/* Platform badge in hero */}
-            <div className="absolute top-4 left-6 z-10">
-              <span className={`text-xs font-semibold uppercase tracking-wider px-3 py-1 rounded-full border backdrop-blur-md ${badge.bg} ${badge.color}`}>
+            {/* Top platform & install status pill */}
+            <div className="absolute top-4 left-6 z-10 flex items-center gap-2">
+              <span
+                className={`text-xs font-semibold uppercase tracking-wider px-3 py-1 rounded-full border backdrop-blur-md ${badge.bg} ${badge.color}`}
+              >
                 {badge.name}
               </span>
+
+              {!isInstalled && (
+                <span className="text-xs font-semibold uppercase px-2.5 py-1 rounded-full bg-slate-900/90 text-slate-200 border border-slate-700 backdrop-blur-md flex items-center gap-1.5">
+                  <Cloud className="w-3 h-3 text-blue-400" />
+                  <span>Cloud Library (Not Installed)</span>
+                </span>
+              )}
             </div>
           </div>
 
           {/* Main Details Body */}
           <div className="px-6 sm:px-8 pb-8 -mt-24 sm:-mt-32 relative z-20">
             <div className="flex flex-col md:flex-row gap-6 md:gap-8 items-start">
-              {/* Vertical Cover Art Thumbnail */}
+              {/* Distinct Vertical Cover Art / Thumbnail Poster */}
               <div className="w-40 sm:w-48 md:w-56 aspect-[2/3] rounded-xl overflow-hidden shadow-2xl border-2 border-slate-700/80 shrink-0 bg-slate-950">
-                <img
+                <GameImage
                   src={game.coverUrl}
-                  alt={game.title}
+                  alt={`${game.title} cover`}
+                  title={game.title}
+                  platform={game.platform}
+                  type="cover"
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -121,20 +142,30 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
                   </p>
                 )}
 
-                {/* Primary Actions: Play, Favorite, Edit */}
+                {/* Primary Actions: Play / Install, Favorite, Edit */}
                 <div className="flex flex-wrap items-center gap-3 mt-6">
-                  <button
-                    onClick={() => onLaunchGame(game)}
-                    disabled={game.isRunning}
-                    className={`flex items-center gap-2.5 px-7 py-3 rounded-xl font-bold text-sm tracking-wide uppercase shadow-lg transition-all transform active:scale-95 ${
-                      game.isRunning
-                        ? 'bg-emerald-600/30 text-emerald-400 border border-emerald-500/50 cursor-default'
-                        : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:via-indigo-500 hover:to-purple-500 text-white shadow-blue-600/30 ring-1 ring-white/20'
-                    }`}
-                  >
-                    <Play className="w-4 h-4 fill-current" />
-                    <span>{game.isRunning ? 'Running' : 'Play Game'}</span>
-                  </button>
+                  {isInstalled ? (
+                    <button
+                      onClick={() => onLaunchGame(game)}
+                      disabled={game.isRunning}
+                      className={`flex items-center gap-2.5 px-7 py-3 rounded-xl font-bold text-sm tracking-wide uppercase shadow-lg transition-all transform active:scale-95 ${
+                        game.isRunning
+                          ? 'bg-emerald-600/30 text-emerald-400 border border-emerald-500/50 cursor-default'
+                          : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:via-indigo-500 hover:to-purple-500 text-white shadow-blue-600/30 ring-1 ring-white/20'
+                      }`}
+                    >
+                      <Play className="w-4 h-4 fill-current" />
+                      <span>{game.isRunning ? 'Running' : 'Play Game'}</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => (onInstallGame ? onInstallGame(game) : onLaunchGame(game))}
+                      className="flex items-center gap-2.5 px-7 py-3 rounded-xl font-bold text-sm tracking-wide uppercase shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30 ring-1 ring-white/20 transition-all transform active:scale-95"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Install Game</span>
+                    </button>
+                  )}
 
                   <button
                     onClick={() => onToggleFavorite(game.id)}
@@ -157,8 +188,19 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
                     className="flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
                   >
                     <Edit3 className="w-4 h-4" />
-                    <span>Customize</span>
+                    <span>Customize Art</span>
                   </button>
+
+                  {onToggleInstalled && (
+                    <button
+                      onClick={() => onToggleInstalled(game.id)}
+                      title="Toggle installed status"
+                      className="flex items-center gap-1.5 px-3 py-3 rounded-xl text-xs font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 transition"
+                    >
+                      <CheckCircle2 className={`w-4 h-4 ${isInstalled ? 'text-emerald-400' : 'text-slate-500'}`} />
+                      <span>{isInstalled ? 'Marked Installed' : 'Mark Installed'}</span>
+                    </button>
+                  )}
 
                   <button
                     onClick={() => onDeleteGame(game.id)}
@@ -256,11 +298,30 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
               {/* Right Col: Technical Details & File Info */}
               <div className="p-4 rounded-xl bg-slate-950/40 border border-slate-800/80 space-y-4 text-xs">
                 <div>
-                  <div className="text-slate-500 font-medium mb-1">Executable Path</div>
-                  <div className="font-mono text-slate-300 break-all bg-slate-900 p-2 rounded border border-slate-800 text-[11px]">
-                    {game.executablePath}
+                  <div className="text-slate-500 font-medium mb-1">Status</div>
+                  <div className="text-slate-200 flex items-center gap-2">
+                    {isInstalled ? (
+                      <span className="flex items-center gap-1 text-emerald-400 font-semibold">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Installed on this PC
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-slate-400 font-semibold">
+                        <Cloud className="w-3.5 h-3.5 text-blue-400" />
+                        Cloud / Not Installed
+                      </span>
+                    )}
                   </div>
                 </div>
+
+                {game.executablePath && (
+                  <div>
+                    <div className="text-slate-500 font-medium mb-1">Executable Target</div>
+                    <div className="font-mono text-slate-300 break-all bg-slate-900 p-2 rounded border border-slate-800 text-[11px]">
+                      {game.executablePath}
+                    </div>
+                  </div>
+                )}
 
                 {game.installPath && (
                   <div>
@@ -272,7 +333,7 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
                 )}
 
                 <div>
-                  <div className="text-slate-500 font-medium mb-1">Date Added to Launcher</div>
+                  <div className="text-slate-500 font-medium mb-1">Date Added</div>
                   <div className="text-slate-300">
                     {new Date(game.addedDate).toLocaleDateString(undefined, {
                       dateStyle: 'medium',

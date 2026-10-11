@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { ScanResult } from '../../src/types/game';
+import { lookupGameArtwork, generateDistinctArtwork } from '../services/artworkService';
 
 export async function scanEpicGames(): Promise<ScanResult[]> {
   const results: ScanResult[] = [];
@@ -23,16 +24,25 @@ export async function scanEpicGames(): Promise<ScanResult[]> {
         const title = manifest.DisplayName;
         const installLoc = manifest.InstallLocation;
         const launchExe = manifest.LaunchExecutable;
+        const appName = manifest.AppName;
 
         if (title && installLoc) {
           const fullExePath = launchExe ? path.join(installLoc, launchExe) : installLoc;
+          const art = (await lookupGameArtwork(title)) || generateDistinctArtwork(title);
+
           results.push({
             title,
-            executablePath: fs.existsSync(fullExePath) ? fullExePath : `com.epicgames.launcher://apps/${manifest.AppName}?action=launch&silent=true`,
+            executablePath: fs.existsSync(fullExePath)
+              ? fullExePath
+              : `com.epicgames.launcher://apps/${appName}?action=launch&silent=true`,
             platform: 'epic',
             installPath: installLoc,
+            storeId: appName,
+            coverUrl: art.coverUrl,
+            bannerUrl: art.bannerUrl,
             description: `Installed via Epic Games Launcher in ${installLoc}`,
-            genres: ['Action', 'Epic Store'],
+            genres: art.genres || ['Action', 'Epic Games'],
+            installed: true,
           });
         }
       } catch (err) {

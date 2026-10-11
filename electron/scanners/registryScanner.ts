@@ -3,6 +3,7 @@ import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { ScanResult } from '../../src/types/game';
+import { lookupGameArtwork, generateDistinctArtwork } from '../services/artworkService';
 
 const execAsync = promisify(exec);
 
@@ -28,7 +29,7 @@ export async function scanWindowsRegistryGames(): Promise<ScanResult[]> {
       const { stdout } = await execAsync(`reg query "${regPath}"`);
       const subKeys = stdout.split('\r\n').filter(l => l.trim().startsWith(regPath));
 
-      for (const subKey of subKeys.slice(0, 150)) { // Limit to avoid long scan times
+      for (const subKey of subKeys.slice(0, 150)) {
         try {
           const { stdout: details } = await execAsync(`reg query "${subKey}"`);
           let displayName = '';
@@ -63,13 +64,18 @@ export async function scanWindowsRegistryGames(): Promise<ScanResult[]> {
 
           if (exePath) {
             foundNames.add(displayName.toLowerCase());
+            const art = (await lookupGameArtwork(displayName)) || generateDistinctArtwork(displayName);
+
             results.push({
               title: displayName,
               executablePath: exePath,
               platform: 'manual',
               installPath: installLocation || path.dirname(exePath),
+              coverUrl: art.coverUrl,
+              bannerUrl: art.bannerUrl,
               description: `Detected on PC in ${installLocation || path.dirname(exePath)}`,
-              genres: ['PC Game'],
+              genres: art.genres || ['PC Game'],
+              installed: true,
             });
           }
         } catch {

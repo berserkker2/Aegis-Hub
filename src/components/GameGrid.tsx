@@ -8,7 +8,7 @@ import {
   FolderSync,
   Plus,
   SlidersHorizontal,
-  Star
+  Cloud
 } from 'lucide-react';
 import { Game, GamePlatform } from '../types/game';
 import { GameCard } from './GameCard';
@@ -20,6 +20,7 @@ interface GameGridProps {
   selectedPlatform: GamePlatform | 'all';
   onSelectGame: (game: Game) => void;
   onLaunchGame: (game: Game, e: React.MouseEvent) => void;
+  onInstallGame?: (game: Game, e: React.MouseEvent) => void;
   onToggleFavorite: (gameId: string, e: React.MouseEvent) => void;
   onEditGame: (game: Game, e: React.MouseEvent) => void;
   onOpenAddGame: () => void;
@@ -35,6 +36,7 @@ export const GameGrid: React.FC<GameGridProps> = ({
   selectedPlatform,
   onSelectGame,
   onLaunchGame,
+  onInstallGame,
   onToggleFavorite,
   onEditGame,
   onOpenAddGame,
@@ -44,14 +46,12 @@ export const GameGrid: React.FC<GameGridProps> = ({
   const [gridSize, setGridSize] = useState<'medium' | 'large'>('medium');
   const [selectedGenre, setSelectedGenre] = useState<string>('all');
 
-  // Extract all unique genres
   const allGenres = useMemo(() => {
     const set = new Set<string>();
     games.forEach((g) => g.genres?.forEach((genre) => set.add(genre)));
     return Array.from(set);
   }, [games]);
 
-  // Filter and sort
   const filteredGames = useMemo(() => {
     return games
       .filter((game) => {
@@ -68,6 +68,8 @@ export const GameGrid: React.FC<GameGridProps> = ({
         // Sidebar category filter
         if (selectedFilter === 'favorites' && !game.favorite) return false;
         if (selectedFilter === 'recent' && !game.lastPlayed) return false;
+        if (selectedFilter === 'installed' && game.installed === false) return false;
+        if (selectedFilter === 'cloud' && game.installed !== false) return false;
 
         // Platform filter
         if (selectedPlatform !== 'all' && game.platform !== selectedPlatform) return false;
@@ -175,9 +177,11 @@ export const GameGrid: React.FC<GameGridProps> = ({
           <div className="w-16 h-16 rounded-2xl bg-slate-900 flex items-center justify-center text-slate-500 mb-4 border border-slate-800">
             <Gamepad2 className="w-8 h-8" />
           </div>
-          <h3 className="text-base font-bold text-slate-200">No games matched your criteria</h3>
+          <h3 className="text-base font-bold text-slate-200">No games found</h3>
           <p className="text-xs text-slate-400 mt-1 max-w-sm">
-            Try adjusting your search or filters, or add games automatically by scanning your PC.
+            {selectedFilter === 'cloud'
+              ? 'Connect your Steam, Epic or GOG accounts to view owned games in the cloud.'
+              : 'Try adjusting your search or filters, or add games automatically by scanning your PC.'}
           </p>
           <div className="flex items-center gap-3 mt-6">
             <button
@@ -210,6 +214,7 @@ export const GameGrid: React.FC<GameGridProps> = ({
               game={game}
               onSelectGame={onSelectGame}
               onLaunchGame={onLaunchGame}
+              onInstallGame={onInstallGame}
               onToggleFavorite={onToggleFavorite}
               onEditGame={onEditGame}
             />

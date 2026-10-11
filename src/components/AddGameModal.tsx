@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, FolderOpen, Image, Plus, Gamepad, Sparkles } from 'lucide-react';
+import { X, FolderOpen, Image, Plus, Gamepad, Sparkles, Search, Check } from 'lucide-react';
 import { Game, GamePlatform } from '../types/game';
 import { getPlaceholderCover, getPlaceholderBanner } from '../utils/formatters';
 
@@ -18,6 +18,9 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ onClose, onAddGame }
   const [genresInput, setGenresInput] = useState('Action, Adventure');
   const [developer, setDeveloper] = useState('');
   const [isFavorite, setIsFavorite] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(true);
+  const [searchingArt, setSearchingArt] = useState(false);
+  const [artFound, setArtFound] = useState(false);
 
   const handleBrowseExecutable = async () => {
     if (window.api?.selectFile) {
@@ -28,16 +31,40 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ onClose, onAddGame }
       if (selected) {
         setExecutablePath(selected);
         if (!title) {
-          // Infer title from file name
           const cleanName = selected
             .split(/[\\/]/)
             .pop()
             ?.replace(/\.(exe|lnk|bat)$/i, '')
             .replace(/[-_]/g, ' ')
             .replace(/\b\w/g, (c) => c.toUpperCase());
-          if (cleanName) setTitle(cleanName);
+          if (cleanName) {
+            setTitle(cleanName);
+            handleAutoSearchArtwork(cleanName);
+          }
         }
       }
+    }
+  };
+
+  const handleAutoSearchArtwork = async (searchTitle?: string) => {
+    const query = searchTitle || title;
+    if (!query.trim() || !window.api?.searchArtwork) return;
+
+    setSearchingArt(true);
+    setArtFound(false);
+    try {
+      const art = await window.api.searchArtwork(query.trim());
+      if (art) {
+        if (art.coverUrl) setCoverUrl(art.coverUrl);
+        if (art.bannerUrl) setBannerUrl(art.bannerUrl);
+        if (art.genres?.length) setGenresInput(art.genres.join(', '));
+        if (art.developer) setDeveloper(art.developer);
+        setArtFound(true);
+      }
+    } catch (err) {
+      console.error('Artwork search error:', err);
+    } finally {
+      setSearchingArt(false);
     }
   };
 
@@ -61,7 +88,7 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ onClose, onAddGame }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !executablePath.trim()) return;
+    if (!title.trim()) return;
 
     const genres = genresInput
       .split(',')
@@ -75,12 +102,13 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ onClose, onAddGame }
       platform,
       coverUrl: coverUrl.trim() || getPlaceholderCover(title),
       bannerUrl: bannerUrl.trim() || getPlaceholderBanner(title),
-      description: description.trim() || `Custom game added manually: ${title}`,
+      description: description.trim() || `Game added to Nexus Launcher: ${title}`,
       genres: genres.length > 0 ? genres : ['PC Game'],
       tags: ['Custom', platform],
       developer: developer.trim() || undefined,
       favorite: isFavorite,
       hidden: false,
+      installed: isInstalled,
       playtimeMinutes: 0,
       addedDate: new Date().toISOString(),
     };
@@ -91,16 +119,16 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ onClose, onAddGame }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 overflow-hidden">
+      <div className="relative w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 overflow-hidden my-auto max-h-[92vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center border border-blue-500/30">
               <Gamepad className="w-4 h-4" />
             </div>
             <div>
               <h2 className="text-base font-bold text-white">Add Game Manually</h2>
-              <p className="text-xs text-slate-400">Link an executable (.exe) or custom application</p>
+              <p className="text-xs text-slate-400">Add an installed executable or cloud game</p>
             </div>
           </div>
           <button
@@ -111,13 +139,33 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ onClose, onAddGame }
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-          {/* Game Title */}
+        {/* Scrollable Form Body */}
+        <form onSubmit={handleSubmit} className="mt-4 space-y-4 overflow-y-auto flex-1 pr-1">
+          {/* Game Title with Auto-Fetch Button */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">
-              Game Title <span className="text-red-400">*</span>
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-semibold text-slate-300">
+                Game Title <span className="text-red-400">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => handleAutoSearchArtwork()}
+                disabled={!title.trim() || searchingArt}
+                className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-40 flex items-center gap-1 font-medium transition"
+              >
+                {artFound ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-400">Artwork Found!</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className={`w-3.5 h-3.5 ${searchingArt ? 'animate-spin' : ''}`} />
+                    <span>{searchingArt ? 'Searching...' : 'Auto-Fetch Art'}</span>
+                  </>
+                )}
+              </button>
+            </div>
             <input
               type="text"
               required
@@ -131,13 +179,12 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ onClose, onAddGame }
           {/* Executable Path */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">
-              Executable Path or Launch Command <span className="text-red-400">*</span>
+              Executable Path or Launch Command
             </label>
             <div className="flex gap-2">
               <input
                 type="text"
-                required
-                placeholder="C:\Games\GameTitle\game.exe"
+                placeholder="C:\Games\GameTitle\game.exe (or leave blank if cloud owned)"
                 value={executablePath}
                 onChange={(e) => setExecutablePath(e.target.value)}
                 className="flex-1 bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none transition font-mono"
@@ -148,15 +195,83 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ onClose, onAddGame }
                 className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shrink-0"
               >
                 <FolderOpen className="w-3.5 h-3.5" />
-                <span>Browse</span>
+                <span>Browse .exe</span>
               </button>
+            </div>
+          </div>
+
+          {/* Distinct Visuals Section */}
+          <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
+            <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+              <Image className="w-3.5 h-3.5 text-blue-400" />
+              <span>Separate Visuals (Thumbnail vs Background)</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Thumbnail (Vertical 2:3) */}
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Thumbnail / Poster (2:3 Aspect)
+                </label>
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="URL or select file..."
+                    value={coverUrl}
+                    onChange={(e) => setCoverUrl(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 focus:border-blue-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 outline-none transition"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleBrowseCover}
+                    className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition shrink-0"
+                    title="Select image from PC"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {coverUrl && (
+                  <div className="mt-2 w-20 aspect-[2/3] rounded-lg overflow-hidden border border-slate-700 bg-slate-900">
+                    <img src={coverUrl} alt="Cover preview" className="w-full h-full object-cover" />
+                  </div>
+                )}
+              </div>
+
+              {/* Background Banner (Wide 16:9) */}
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Page Background (16:9 Hero Wallpaper)
+                </label>
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="URL or select file..."
+                    value={bannerUrl}
+                    onChange={(e) => setBannerUrl(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 focus:border-blue-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 outline-none transition"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleBrowseBanner}
+                    className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition shrink-0"
+                    title="Select image from PC"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {bannerUrl && (
+                  <div className="mt-2 w-32 aspect-[16/9] rounded-lg overflow-hidden border border-slate-700 bg-slate-900">
+                    <img src={bannerUrl} alt="Banner preview" className="w-full h-full object-cover" />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Platform & Developer */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Platform</label>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Platform / Store</label>
               <select
                 value={platform}
                 onChange={(e) => setPlatform(e.target.value as GamePlatform)}
@@ -164,19 +279,19 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ onClose, onAddGame }
               >
                 <option value="manual">PC Standalone / DRM-Free</option>
                 <option value="steam">Steam</option>
-                <option value="epic">Epic Games</option>
+                <option value="epic">Epic Games Store</option>
                 <option value="gog">GOG Galaxy</option>
                 <option value="ea">EA App</option>
                 <option value="ubisoft">Ubisoft Connect</option>
-                <option value="xbox">Xbox / Microsoft Store</option>
+                <option value="xbox">Xbox / Windows Store</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Developer / Studio</label>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Developer</label>
               <input
                 type="text"
-                placeholder="e.g. Rockstar Games, Valve"
+                placeholder="e.g. CD PROJEKT RED, Valve"
                 value={developer}
                 onChange={(e) => setDeveloper(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none transition"
@@ -184,95 +299,43 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ onClose, onAddGame }
             </div>
           </div>
 
-          {/* Cover & Banner URLs */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Cover Art (URL or File)
-              </label>
-              <div className="flex gap-1.5">
-                <input
-                  type="text"
-                  placeholder="https://... or select file"
-                  value={coverUrl}
-                  onChange={(e) => setCoverUrl(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 outline-none transition"
-                />
-                <button
-                  type="button"
-                  onClick={handleBrowseCover}
-                  title="Select image from PC"
-                  className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition shrink-0"
-                >
-                  <Image className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Hero Banner (URL or File)
-              </label>
-              <div className="flex gap-1.5">
-                <input
-                  type="text"
-                  placeholder="https://... or select file"
-                  value={bannerUrl}
-                  onChange={(e) => setBannerUrl(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 outline-none transition"
-                />
-                <button
-                  type="button"
-                  onClick={handleBrowseBanner}
-                  title="Select banner from PC"
-                  className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition shrink-0"
-                >
-                  <Image className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          </div>
-
           {/* Genres */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Genres (comma separated)</label>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">Genres</label>
             <input
               type="text"
-              placeholder="Action, RPG, Open World, Shooter"
+              placeholder="Action, RPG, Open World"
               value={genresInput}
               onChange={(e) => setGenresInput(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none transition"
+              className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-lg px-3 py-2 text-xs text-slate-100 outline-none transition"
             />
           </div>
 
-          {/* Description */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Description</label>
-            <textarea
-              rows={2}
-              placeholder="Brief summary or notes about the game..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none transition resize-none"
-            />
-          </div>
+          {/* Checkboxes: Favorite & Installed */}
+          <div className="flex items-center gap-6 pt-1">
+            <label className="flex items-center gap-2 text-xs text-slate-300 font-medium cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isFavorite}
+                onChange={(e) => setIsFavorite(e.target.checked)}
+                className="rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0"
+              />
+              <span>Add directly to Favorites</span>
+            </label>
 
-          {/* Favorite checkbox */}
-          <div className="flex items-center gap-2 pt-1">
-            <input
-              type="checkbox"
-              id="isFav"
-              checked={isFavorite}
-              onChange={(e) => setIsFavorite(e.target.checked)}
-              className="rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0"
-            />
-            <label htmlFor="isFav" className="text-xs text-slate-300 font-medium cursor-pointer">
-              Add directly to Favorites
+            <label className="flex items-center gap-2 text-xs text-slate-300 font-medium cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isInstalled}
+                onChange={(e) => setIsInstalled(e.target.checked)}
+                className="rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0"
+              />
+              <span>Mark as Installed locally</span>
             </label>
           </div>
 
           {/* Submit buttons */}
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800 shrink-0">
             <button
               type="button"
               onClick={onClose}

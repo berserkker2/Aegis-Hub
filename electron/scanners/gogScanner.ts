@@ -3,6 +3,7 @@ import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { ScanResult } from '../../src/types/game';
+import { lookupGameArtwork, generateDistinctArtwork } from '../services/artworkService';
 
 const execAsync = promisify(exec);
 
@@ -28,13 +29,19 @@ export async function scanGogGames(): Promise<ScanResult[]> {
             const exeFiles = findMainExecutable(gameDir);
             if (exeFiles.length > 0 && !foundTitles.has(dirent.name)) {
               foundTitles.add(dirent.name);
+              const formattedTitle = formatGameTitle(dirent.name);
+              const art = (await lookupGameArtwork(formattedTitle)) || generateDistinctArtwork(formattedTitle);
+
               results.push({
-                title: formatGameTitle(dirent.name),
+                title: formattedTitle,
                 executablePath: exeFiles[0],
                 platform: 'gog',
                 installPath: gameDir,
+                coverUrl: art.coverUrl,
+                bannerUrl: art.bannerUrl,
                 description: `Installed via GOG Galaxy in ${gameDir}`,
-                genres: ['GOG Game'],
+                genres: art.genres || ['GOG Game'],
+                installed: true,
               });
             }
           }
@@ -78,13 +85,18 @@ export async function scanGogGames(): Promise<ScanResult[]> {
             if (gameName && (gamePath || exeName) && !foundTitles.has(gameName)) {
               foundTitles.add(gameName);
               const fullExe = exeName ? (path.isAbsolute(exeName) ? exeName : path.join(gamePath, exeName)) : gamePath;
+              const art = (await lookupGameArtwork(gameName)) || generateDistinctArtwork(gameName);
+
               results.push({
                 title: gameName,
                 executablePath: fullExe,
                 platform: 'gog',
                 installPath: gamePath,
+                coverUrl: art.coverUrl,
+                bannerUrl: art.bannerUrl,
                 description: `Installed via GOG in ${gamePath}`,
-                genres: ['GOG Game'],
+                genres: art.genres || ['GOG Game'],
+                installed: true,
               });
             }
           } catch {
