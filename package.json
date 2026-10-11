@@ -10,6 +10,7 @@
     "dev:vite": "vite",
     "dev:electron": "wait-on tcp:5173 && npm run build:electron && cross-env NODE_ENV=development electron .",
     "dev": "concurrently -k -r \"npm run dev:vite\" \"npm run dev:electron\"",
+    "clean:cache": "node scripts/cleanCache.cjs",
     "start": "npm run build:electron && electron ."
   },
   "keywords": [],

@@ -10,7 +10,8 @@ import {
   HardDrive,
   Cloud,
   CheckCircle2,
-  SlidersHorizontal
+  SlidersHorizontal,
+  RotateCcw
 } from 'lucide-react';
 import { GamePlatform } from '../types/game';
 
@@ -27,6 +28,7 @@ interface SidebarProps {
   onOpenAddGame: () => void;
   onOpenScanner: () => void;
   onOpenStoreLinks: () => void;
+  onResetData?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -222,9 +224,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
           className="flex items-center gap-1.5 hover:text-slate-300 transition"
         >
           <Cloud className="w-3 h-3 text-blue-400" />
-          <span>Cloud Store Sync</span>
+          <span>Store Sync</span>
         </button>
-        <span className="text-slate-600 font-mono">v1.1</span>
+
+        {onResetData && (
+          <button
+            onClick={() => {
+              if (window.confirm('Clear all launcher cache and reset library to clean state?')) {
+                onResetData();
+              }
+            }}
+            title="Wipe cache and reset library data"
+            className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-red-400 transition"
+          >
+            <RotateCcw className="w-3 h-3" />
+            <span>Clear Cache</span>
+          </button>
+        )}
       </div>
     </aside>
   );

@@ -30,6 +30,7 @@ declare global {
       saveGames: (games: Game[]) => Promise<boolean>;
       getSettings: () => Promise<LauncherSettings>;
       saveSettings: (settings: LauncherSettings) => Promise<boolean>;
+      resetLauncherData: () => Promise<Game[]>;
       launchGame: (gameId: string) => Promise<{ success: boolean; message?: string }>;
       installGame: (gameId: string) => Promise<{ success: boolean; message?: string }>;
       scanPC: () => Promise<ScanResult[]>;

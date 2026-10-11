@@ -239,6 +239,17 @@ export const App: React.FC = () => {
     showToast(`Successfully imported ${newGames.length} new games into your library!`);
   };
 
+  const handleResetData = async () => {
+    if (window.api?.resetLauncherData) {
+      const cleanGames = await window.api.resetLauncherData();
+      setGames(cleanGames);
+      setSelectedGameForDetail(null);
+      setSelectedGameForEdit(null);
+      setArtworkPickerGame(null);
+      showToast('Cache and data wiped clean. Library reset to default.');
+    }
+  };
+
   const favoriteCount = games.filter((g) => g.favorite).length;
   const recentCount = games.filter((g) => g.lastPlayed).length;
   const installedCount = games.filter((g) => g.installed !== false).length;
@@ -270,6 +281,7 @@ export const App: React.FC = () => {
           onOpenAddGame={() => setIsAddModalOpen(true)}
           onOpenScanner={() => setIsScannerModalOpen(true)}
           onOpenStoreLinks={() => setIsStoreLinksModalOpen(true)}
+          onResetData={handleResetData}
         />
 
         {/* Main Content Area */}

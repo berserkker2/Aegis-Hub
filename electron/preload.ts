@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('api', {
   saveGames: (games: Game[]): Promise<boolean> => ipcRenderer.invoke('save-games', games),
   getSettings: (): Promise<LauncherSettings> => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings: LauncherSettings): Promise<boolean> => ipcRenderer.invoke('save-settings', settings),
+  resetLauncherData: (): Promise<Game[]> => ipcRenderer.invoke('reset-launcher-data'),
   launchGame: (gameId: string) => ipcRenderer.invoke('launch-game', gameId),
   installGame: (gameId: string) => ipcRenderer.invoke('install-game', gameId),
   scanPC: (): Promise<ScanResult[]> => ipcRenderer.invoke('scan-pc'),

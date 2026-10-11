@@ -142,6 +142,23 @@ ipcMain.handle('save-settings', (_event, settings: LauncherSettings) => {
   return true;
 });
 
+ipcMain.handle('reset-launcher-data', () => {
+  const dataDir = app.getPath('userData');
+  const gamesFile = path.join(dataDir, 'games.json');
+  const accountsFile = path.join(dataDir, 'store-accounts.json');
+  const mediaCache = path.join(dataDir, 'media-cache');
+
+  try {
+    if (fs.existsSync(gamesFile)) fs.unlinkSync(gamesFile);
+    if (fs.existsSync(accountsFile)) fs.unlinkSync(accountsFile);
+    if (fs.existsSync(mediaCache)) fs.rmSync(mediaCache, { recursive: true, force: true });
+  } catch (err) {
+    console.error('Error clearing data:', err);
+  }
+
+  return store.getGames();
+});
+
 // Artwork Lookup & Caching IPC
 ipcMain.handle('search-artwork', async (_event, title: string) => {
   return await lookupGameArtwork(title);

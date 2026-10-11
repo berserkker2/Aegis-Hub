@@ -12,7 +12,8 @@ import {
   Edit3,
   Trash2,
   CheckCircle2,
-  Award
+  Award,
+  Sparkles
 } from 'lucide-react';
 import { Game } from '../types/game';
 import { formatPlaytime, formatRelativeDate, getPlatformBadge } from '../utils/formatters';
