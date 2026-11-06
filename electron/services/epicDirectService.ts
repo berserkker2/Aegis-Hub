@@ -323,6 +323,19 @@ export class EpicDirectService {
         return false;
       };
 
+      authWindow.webContents.on('did-finish-load', async () => {
+        try {
+          const bodyText = await authWindow.webContents.executeJavaScript('document.body.innerText');
+          if (bodyText && bodyText.includes('authorizationCode')) {
+            const match = bodyText.match(/"authorizationCode"\s*:\s*"([a-zA-Z0-9_-]+)"/);
+            if (match && match[1]) {
+              finishWithCode(match[1], false);
+              return;
+            }
+          }
+        } catch {}
+      });
+
       authWindow.webContents.on('will-navigate', (_event, url) => {
         checkUrlForCode(url);
       });
@@ -407,6 +420,19 @@ export class EpicDirectService {
         return false;
       };
 
+      authWindow.webContents.on('did-finish-load', async () => {
+        try {
+          const bodyText = await authWindow.webContents.executeJavaScript('document.body.innerText');
+          if (bodyText && bodyText.includes('authorizationCode')) {
+            const match = bodyText.match(/"authorizationCode"\s*:\s*"([a-zA-Z0-9_-]+)"/);
+            if (match && match[1]) {
+              finishWithCode(match[1], false);
+              return;
+            }
+          }
+        } catch {}
+      });
+
       authWindow.webContents.on('will-navigate', (_event, url) => {
         checkUrlForCode(url);
       });
@@ -417,6 +443,24 @@ export class EpicDirectService {
 
       authWindow.webContents.on('did-navigate', async (_event, url) => {
         if (checkUrlForCode(url)) return;
+
+        // If Epic landed on the redirect JSON response page or shows the code in body
+        try {
+          const bodyText = await authWindow.webContents.executeJavaScript('document.body.innerText');
+          if (bodyText && bodyText.includes('authorizationCode')) {
+            const parsed = JSON.parse(bodyText.trim());
+            if (parsed.authorizationCode) {
+              finishWithCode(parsed.authorizationCode, false);
+              return;
+            }
+          }
+          // Also check for raw regex in body text
+          const bodyMatch = bodyText.match(/"authorizationCode"\s*:\s*"([a-zA-Z0-9_-]+)"/);
+          if (bodyMatch && bodyMatch[1]) {
+            finishWithCode(bodyMatch[1], false);
+            return;
+          }
+        } catch {}
 
         if (url.includes('epicgames.com/id/api/redirect')) {
           try {

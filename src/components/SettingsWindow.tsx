@@ -88,6 +88,13 @@ export const SettingsWindow: React.FC = () => {
     }
   };
 
+  const handleResetData = async () => {
+    if (window.api?.resetLauncherData) {
+      await window.api.resetLauncherData();
+      handleClose();
+    }
+  };
+
   return (
     <SettingsModal
       isWindow={true}
@@ -99,7 +106,9 @@ export const SettingsWindow: React.FC = () => {
       hiddenGamesCount={hiddenGamesCount}
       onUpdateEmulator={handleUpdateEmulator}
       onDeleteEmulator={handleDeleteEmulator}
+      onResetData={handleResetData}
       onFetchMissingArtwork={() => {}}
+      onOpenScanner={() => {}}
     />
   );
 };

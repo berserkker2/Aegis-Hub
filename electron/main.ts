@@ -1397,17 +1397,30 @@ ipcMain.handle('reset-launcher-data', () => {
   const dataDir = app.getPath('userData');
   const gamesFile = path.join(dataDir, 'games.json');
   const accountsFile = path.join(dataDir, 'store-accounts.json');
+  const epicTokensFile = path.join(dataDir, 'epic-tokens.json');
   const mediaCache = path.join(dataDir, 'media-cache');
 
   try {
     if (fs.existsSync(gamesFile)) fs.unlinkSync(gamesFile);
     if (fs.existsSync(accountsFile)) fs.unlinkSync(accountsFile);
+    if (fs.existsSync(epicTokensFile)) fs.unlinkSync(epicTokensFile);
     if (fs.existsSync(mediaCache)) fs.rmSync(mediaCache, { recursive: true, force: true });
   } catch (err) {
     console.error('Error clearing data:', err);
   }
 
-  return store.getGames();
+  // Clear Epic service tokens from memory
+  epicDirectService.clearTokens();
+
+  const freshGames = store.getGames();
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send('games-updated', freshGames);
+      win.webContents.send('store-accounts-updated', []);
+    }
+  });
+
+  return freshGames;
 });
 
 // Local Backup & Restore IPC (Settings, API Keys, and Playtime - NO store credentials)
