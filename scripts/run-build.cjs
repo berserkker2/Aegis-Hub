@@ -84,15 +84,25 @@ function syncGitSourceCode(versionTag) {
       execSync(`git tag -a ${gitTag} -m "Release ${gitTag}"`, { stdio: 'ignore', cwd: rootDir });
     } catch {}
 
-    // Push code and tags to GitHub using GH_TOKEN for zero-prompt instant authentication
+    // Push code to GitHub
     if (ghToken) {
       const authenticatedUrl = `https://${ghToken}@github.com/berserkker2/Aegis-Hub.git`;
-      execSync(`git push -u "${authenticatedUrl}" main --tags`, { stdio: 'inherit', cwd: rootDir });
+      execSync(`git push -u "${authenticatedUrl}" main`, { stdio: 'inherit', cwd: rootDir });
     } else {
-      execSync('git push -u origin main --tags', { stdio: 'inherit', cwd: rootDir });
+      execSync('git push -u origin main', { stdio: 'inherit', cwd: rootDir });
     }
 
-    console.log(`[GIT] ✅ Código-fonte e tag ${gitTag} atualizados com sucesso no GitHub!`);
+    // Push tags safely without failing if the tag was already pushed previously
+    try {
+      if (ghToken) {
+        const authenticatedUrl = `https://${ghToken}@github.com/berserkker2/Aegis-Hub.git`;
+        execSync(`git push "${authenticatedUrl}" --tags`, { stdio: 'ignore', cwd: rootDir });
+      } else {
+        execSync('git push origin --tags', { stdio: 'ignore', cwd: rootDir });
+      }
+    } catch {}
+
+    console.log(`[GIT] ✅ Código-fonte sincronizado com sucesso no GitHub!`);
   } catch (err) {
     console.warn(`[GIT] Aviso ao sincronizar com git:`, err?.message || err);
   }
