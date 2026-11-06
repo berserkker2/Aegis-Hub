@@ -2,6 +2,7 @@ const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const readline = require('readline');
+const https = require('https');
 
 const rootDir = path.resolve(__dirname, '..');
 
@@ -46,6 +47,101 @@ function askQuestion(query) {
       resolve(ans.trim());
     })
   );
+}
+
+function githubApi(method, apiPath, body = null) {
+  return new Promise((resolve) => {
+    if (!ghToken) return resolve({ status: 0, data: null });
+    const data = body ? JSON.stringify(body) : null;
+    const req = https.request(
+      {
+        hostname: 'api.github.com',
+        path: apiPath,
+        method,
+        headers: {
+          'User-Agent': 'Aegis-Release-Bot',
+          Authorization: `token ${ghToken}`,
+          Accept: 'application/vnd.github.v3+json',
+          ...(data ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {}),
+        },
+      },
+      (res) => {
+        let resp = '';
+        res.on('data', (c) => (resp += c));
+        res.on('end', () => {
+          try {
+            resolve({ status: res.statusCode, data: resp ? JSON.parse(resp) : null });
+          } catch {
+            resolve({ status: res.statusCode, data: resp });
+          }
+        });
+      }
+    );
+    req.on('error', () => resolve({ status: 0, data: null }));
+    if (data) req.write(data);
+    req.end();
+  });
+}
+
+async function ensureGitHubReleaseExists(gitTag, releaseTitle) {
+  if (!ghToken) return;
+  console.log(`[RELEASE] A preparar Release no GitHub para o tag ${gitTag}...`);
+  try {
+    const check = await githubApi('GET', `/repos/berserkker2/Aegis-Hub/releases/tags/${gitTag}`);
+    if (check.status === 200 && check.data?.id) {
+      console.log(`[RELEASE] Release existente encontrada (ID: ${check.data.id}).`);
+      return check.data.id;
+    }
+    const create = await githubApi('POST', `/repos/berserkker2/Aegis-Hub/releases`, {
+      tag_name: gitTag,
+      name: releaseTitle,
+      draft: false,
+      prerelease: false,
+    });
+    if (create.status === 201 && create.data?.id) {
+      console.log(`[RELEASE] Release inicial criada com sucesso no GitHub (ID: ${create.data.id}).`);
+      return create.data.id;
+    }
+  } catch (err) {
+    console.warn(`[RELEASE] Aviso ao preparar release:`, err?.message || err);
+  }
+}
+
+async function consolidateAndCleanReleases(gitTag) {
+  if (!ghToken) return;
+  console.log(`[RELEASE] A verificar e consolidar executáveis na release do GitHub...`);
+  try {
+    const listRes = await githubApi('GET', `/repos/berserkker2/Aegis-Hub/releases?per_page=15`);
+    if (!Array.isArray(listRes.data)) return;
+
+    for (const r of listRes.data) {
+      if (r.tag_name === gitTag) {
+        const hasExe = r.assets?.some((a) => a.name?.endsWith('.exe'));
+        if (!hasExe && (!r.assets || r.assets.length <= 1)) {
+          console.log(`[RELEASE] A limpar duplicado vazio (ID: ${r.id})...`);
+          await githubApi('PATCH', `/repos/berserkker2/Aegis-Hub/releases/${r.id}`, {
+            draft: true,
+            tag_name: `cleanup-${r.id}`,
+          });
+          await githubApi('DELETE', `/repos/berserkker2/Aegis-Hub/releases/${r.id}`);
+        }
+      }
+    }
+
+    // Mark the release containing executables as latest
+    const refreshed = await githubApi('GET', `/repos/berserkker2/Aegis-Hub/releases?per_page=10`);
+    if (Array.isArray(refreshed.data)) {
+      const releaseWithExe = refreshed.data.find(
+        (r) => r.tag_name === gitTag && r.assets?.some((a) => a.name?.endsWith('.exe'))
+      );
+      if (releaseWithExe) {
+        await githubApi('PATCH', `/repos/berserkker2/Aegis-Hub/releases/${releaseWithExe.id}`, { make_latest: 'true' });
+        console.log(`[RELEASE] ✅ Release oficial ${gitTag} (ID: ${releaseWithExe.id}) marcada como LATEST com executáveis!`);
+      }
+    }
+  } catch (err) {
+    console.warn(`[RELEASE] Aviso na consolidação da release:`, err?.message || err);
+  }
 }
 
 function syncGitSourceCode(versionTag) {
@@ -185,10 +281,20 @@ export const APP_VERSION_INFO: AppVersionInfo = {
   // -c.releaseInfo.releaseNotes and releaseName configure GitHub Release cleanly
   const publishFlag = isPublish ? '--publish always' : '--publish never';
   const releaseTitle = `Beta ${versionTag.replace(/^b/i, '')}`;
+  const gitTag = `v1.0.0-${versionTag}`;
+
+  if (isPublish) {
+    await ensureGitHubReleaseExists(gitTag, releaseTitle);
+  }
+
   const builderCmd = `npx electron-builder ${targetArg} ${publishFlag} -c.extraMetadata.name="Aegis Hub" -c.releaseInfo.releaseName="${releaseTitle}" -c.publish.releaseType="release"`;
 
   console.log(`\n[2/2] Executando electron-builder (${builderCmd})...\n`);
   execSync(builderCmd, { stdio: 'inherit', cwd: rootDir, env });
+
+  if (isPublish) {
+    await consolidateAndCleanReleases(gitTag);
+  }
 
   console.log(`\n========================================================`);
   if (isPublish) {
