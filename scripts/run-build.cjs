@@ -55,6 +55,11 @@ function askQuestion(query) {
 function syncGitSourceCode(versionTag) {
   console.log(`\n[GIT] Sincronizando código-fonte com o GitHub (Open Source)...`);
   try {
+    // Add safe directory to prevent Windows ownership mismatch errors
+    try {
+      execSync(`git config --global --add safe.directory "${rootDir.replace(/\\/g, '/')}"`, { stdio: 'ignore' });
+    } catch {}
+
     // Stage all tracked and new non-ignored files
     execSync('git add .', { stdio: 'inherit', cwd: rootDir });
 
@@ -145,9 +150,10 @@ export const APP_VERSION_INFO: AppVersionInfo = {
 `;
   fs.writeFileSync(versionTsPath, versionTsContent, 'utf-8');
 
-  // Update package.json version
+  // Update package.json version: electron-builder strictly requires SemVer (X.Y.Z) in package.json
+  // We keep package.json as 1.0.0-b06112026, and tell electron-builder to create the GitHub release tag as b06112026
   if (pkgPath && pkg) {
-    pkg.version = versionTag;
+    pkg.version = `1.0.0-${versionTag}`;
     fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
   }
 
@@ -164,9 +170,10 @@ export const APP_VERSION_INFO: AppVersionInfo = {
   execSync('npm run build', { stdio: 'inherit', cwd: rootDir, env });
 
   // 2. Package / Publish with electron-builder
+  // -c.releaseInfo.releaseNotes and releaseName configure GitHub Release cleanly
   const publishFlag = isPublish ? '--publish always' : '--publish never';
   const releaseTitle = `Beta ${versionTag.replace(/^b/i, '')}`;
-  const builderCmd = `npx electron-builder ${targetArg} ${publishFlag} -c.extraMetadata.name="Aegis Hub" -c.releaseInfo.releaseName="${releaseTitle}"`;
+  const builderCmd = `npx electron-builder ${targetArg} ${publishFlag} -c.extraMetadata.name="Aegis Hub" -c.releaseInfo.releaseName="${releaseTitle}" -c.publish.releaseType="release"`;
 
   console.log(`\n[2/2] Executando electron-builder (${builderCmd})...\n`);
   execSync(builderCmd, { stdio: 'inherit', cwd: rootDir, env });
