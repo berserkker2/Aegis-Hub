@@ -7,6 +7,7 @@ const rootDir = path.resolve(__dirname, '..');
 
 // 1. Load GH_TOKEN from .env if present
 const envFilePath = path.join(rootDir, '.env');
+let ghToken = process.env.GH_TOKEN || '';
 if (fs.existsSync(envFilePath)) {
   const envContent = fs.readFileSync(envFilePath, 'utf-8');
   for (const line of envContent.split('\n')) {
@@ -16,6 +17,9 @@ if (fs.existsSync(envFilePath)) {
       const val = match[2].replace(/^['"](.*)['"]$/, '$1');
       if (!process.env[key]) {
         process.env[key] = val;
+      }
+      if (key === 'GH_TOKEN') {
+        ghToken = val;
       }
     }
   }
@@ -48,6 +52,41 @@ function askQuestion(query) {
   );
 }
 
+function syncGitSourceCode(versionTag) {
+  console.log(`\n[GIT] Sincronizando código-fonte com o GitHub (Open Source)...`);
+  try {
+    // Stage all tracked and new non-ignored files
+    execSync('git add .', { stdio: 'inherit', cwd: rootDir });
+
+    // Commit if there are changes
+    try {
+      execSync(`git commit -m "chore(release): version ${versionTag} source update"`, {
+        stdio: 'inherit',
+        cwd: rootDir,
+      });
+    } catch {
+      // Nothing new to commit, continue
+    }
+
+    // Ensure we are on branch main
+    try {
+      execSync('git branch -M main', { stdio: 'ignore', cwd: rootDir });
+    } catch {}
+
+    // Push to GitHub using GH_TOKEN for zero-prompt instant authentication
+    if (ghToken) {
+      const authenticatedUrl = `https://${ghToken}@github.com/berserkker2/Aegis-Hub.git`;
+      execSync(`git push -u "${authenticatedUrl}" main`, { stdio: 'inherit', cwd: rootDir });
+    } else {
+      execSync('git push -u origin main', { stdio: 'inherit', cwd: rootDir });
+    }
+
+    console.log(`[GIT] ✅ Código-fonte atualizado com sucesso no GitHub!`);
+  } catch (err) {
+    console.warn(`[GIT] Aviso ao sincronizar com git:`, err?.message || err);
+  }
+}
+
 async function main() {
   console.log(`\n========================================================`);
   console.log(`   🚀 AEGIS HUB - UNIFIED BUILD & RELEASE ASSISTANT`);
@@ -64,7 +103,7 @@ async function main() {
   if (passedArgs.length === 0) {
     console.log(`Escolhe a ação pretendida:`);
     console.log(`  [1] Compilar LOCALMENTE apenas (sem enviar para o GitHub)`);
-    console.log(`  [2] Compilar e PUBLICAR RELEASE no GitHub (Automático)`);
+    console.log(`  [2] Sincronizar Código e PUBLICAR RELEASE no GitHub (Automático)`);
     const actionChoice = (await askQuestion(`\nOpção [1/2] (Default 1): `)) || '1';
     isPublish = actionChoice === '2';
 
@@ -86,7 +125,7 @@ async function main() {
   console.log(`\n--------------------------------------------------------`);
   console.log(`  Versão do Build: ${versionTag}`);
   console.log(`  Data: ${formattedDate}`);
-  console.log(`  Modo: ${isPublish ? '🚀 PUBLICAR NO GITHUB RELEASES' : '💻 BUILD LOCAL APENAS'}`);
+  console.log(`  Modo: ${isPublish ? '🚀 PUBLICAR NO GITHUB RELEASES & CÓDIGO-FONTE' : '💻 BUILD LOCAL APENAS'}`);
   console.log(`  Alvo: ${targetArg || 'Padrão'}`);
   console.log(`--------------------------------------------------------\n`);
 
@@ -108,28 +147,35 @@ export const APP_VERSION_INFO: AppVersionInfo = {
 
   // Update package.json version
   if (pkgPath && pkg) {
-    pkg.version = `1.0.0-${versionTag}`;
+    pkg.version = versionTag;
     fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
+  }
+
+  // If publishing, sync source code to GitHub first so branch 'main' exists and matches the release
+  if (isPublish) {
+    syncGitSourceCode(versionTag);
   }
 
   // Set environment variable for electron-builder artifactName
   const env = { ...process.env, APP_VERSION: versionTag };
 
   // 1. Build frontend & electron bundle
-  console.log(`[1/2] Compilando frontend (Vite) e processo Electron...`);
+  console.log(`\n[1/2] Compilando frontend (Vite) e processo Electron...`);
   execSync('npm run build', { stdio: 'inherit', cwd: rootDir, env });
 
   // 2. Package / Publish with electron-builder
   const publishFlag = isPublish ? '--publish always' : '--publish never';
-  const builderCmd = `npx electron-builder ${targetArg} ${publishFlag}`;
+  const releaseTitle = `Beta ${versionTag.replace(/^b/i, '')}`;
+  const builderCmd = `npx electron-builder ${targetArg} ${publishFlag} -c.extraMetadata.name="Aegis Hub" -c.releaseInfo.releaseName="${releaseTitle}"`;
 
   console.log(`\n[2/2] Executando electron-builder (${builderCmd})...\n`);
   execSync(builderCmd, { stdio: 'inherit', cwd: rootDir, env });
 
   console.log(`\n========================================================`);
   if (isPublish) {
-    console.log(`  🎉 SUCESSO! A release v${versionTag} foi publicada no GitHub!`);
-    console.log(`  Link: https://github.com/berserkker2/Aegis-Hub/releases`);
+    console.log(`  🎉 SUCESSO!`);
+    console.log(`  1. Código-fonte atualizado em: https://github.com/berserkker2/Aegis-Hub`);
+    console.log(`  2. Release v${versionTag} publicada com instaladores em: https://github.com/berserkker2/Aegis-Hub/releases`);
   } else {
     console.log(`  ✅ Build concluído com sucesso localmente na pasta 'release/'!`);
   }

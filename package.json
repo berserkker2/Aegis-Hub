@@ -56,7 +56,8 @@
     "publish": {
       "provider": "github",
       "owner": "berserkker2",
-      "repo": "Aegis-Hub"
+      "repo": "Aegis-Hub",
+      "releaseType": "release"
     },
     "directories": {
       "output": "release",
