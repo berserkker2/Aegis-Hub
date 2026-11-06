@@ -78,15 +78,21 @@ function syncGitSourceCode(versionTag) {
       execSync('git branch -M main', { stdio: 'ignore', cwd: rootDir });
     } catch {}
 
-    // Push to GitHub using GH_TOKEN for zero-prompt instant authentication
+    // Ensure Git tag exists and is pushed to GitHub to prevent concurrent release creation race conditions
+    const gitTag = `v1.0.0-${versionTag}`;
+    try {
+      execSync(`git tag -a ${gitTag} -m "Release ${gitTag}"`, { stdio: 'ignore', cwd: rootDir });
+    } catch {}
+
+    // Push code and tags to GitHub using GH_TOKEN for zero-prompt instant authentication
     if (ghToken) {
       const authenticatedUrl = `https://${ghToken}@github.com/berserkker2/Aegis-Hub.git`;
-      execSync(`git push -u "${authenticatedUrl}" main`, { stdio: 'inherit', cwd: rootDir });
+      execSync(`git push -u "${authenticatedUrl}" main --tags`, { stdio: 'inherit', cwd: rootDir });
     } else {
-      execSync('git push -u origin main', { stdio: 'inherit', cwd: rootDir });
+      execSync('git push -u origin main --tags', { stdio: 'inherit', cwd: rootDir });
     }
 
-    console.log(`[GIT] ✅ Código-fonte atualizado com sucesso no GitHub!`);
+    console.log(`[GIT] ✅ Código-fonte e tag ${gitTag} atualizados com sucesso no GitHub!`);
   } catch (err) {
     console.warn(`[GIT] Aviso ao sincronizar com git:`, err?.message || err);
   }
