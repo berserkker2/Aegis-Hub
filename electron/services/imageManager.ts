@@ -18,6 +18,7 @@ export class ImageManager {
   private cacheDir: string;
   private coversDir: string;
   private bannersDir: string;
+  private artworkCache = new Map<string, { covers: ArtworkOption[]; banners: ArtworkOption[]; timestamp: number }>();
 
   constructor() {
     const baseDir = app ? app.getPath('userData') : path.join(process.cwd(), '.launcher-data');
@@ -113,140 +114,174 @@ export class ImageManager {
     title: string,
     platformOrEmuId?: string
   ): Promise<{ covers: ArtworkOption[]; banners: ArtworkOption[] }> {
+    const cleanTitle = cleanGameTitle(title);
+    if (!cleanTitle) return { covers: [], banners: [] };
+
+    // Check in-memory cache first (instant response)
+    const cacheKey = `${cleanTitle.toLowerCase()}::${platformOrEmuId || ''}`;
+    const cached = this.artworkCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < 1000 * 60 * 15) {
+      return { covers: [...cached.covers], banners: [...cached.banners] };
+    }
+
     const covers: ArtworkOption[] = [];
     const banners: ArtworkOption[] = [];
 
-    const cleanTitle = cleanGameTitle(title);
-    if (!cleanTitle) return { covers, banners };
-
-    try {
-      // 1. Check Libretro authentic console boxarts (high priority for retro & console games)
+    // Run all artwork providers concurrently in parallel
+    const taskLibretro = async () => {
       try {
         const libretroMatch = await lookupLibretroArtwork(cleanTitle, platformOrEmuId);
         if (libretroMatch && libretroMatch.coverUrl) {
-          covers.unshift({
-            url: libretroMatch.coverUrl,
-            previewUrl: libretroMatch.coverUrl,
-            type: 'cover',
-            label: `${cleanTitle} - Official Console Box Art`,
-            source: 'Libretro CDN',
-          });
-          banners.unshift({
-            url: libretroMatch.bannerUrl,
-            previewUrl: libretroMatch.bannerUrl,
-            type: 'banner',
-            label: `${cleanTitle} - Libretro Wallpaper`,
-            source: 'Libretro CDN',
-          });
+          return {
+            cover: {
+              url: libretroMatch.coverUrl,
+              previewUrl: libretroMatch.coverUrl,
+              type: 'cover' as const,
+              label: `${cleanTitle} - Official Console Box Art`,
+              source: 'Libretro CDN',
+            },
+            banner: {
+              url: libretroMatch.bannerUrl,
+              previewUrl: libretroMatch.bannerUrl,
+              type: 'banner' as const,
+              label: `${cleanTitle} - Libretro Wallpaper`,
+              source: 'Libretro CDN',
+            },
+          };
         }
       } catch {}
+      return null;
+    };
 
-      // 2. Check Wikipedia articles for official original retail box art
+    const taskWikipedia = async () => {
+      const localCovers: ArtworkOption[] = [];
+      const localBanners: ArtworkOption[] = [];
       try {
         const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
           cleanTitle + ' video game'
         )}&format=json&utf8=1`;
-        const searchRes = await this.fetchJson(searchUrl, 3500);
-        if (searchRes?.query?.search) {
-          for (const item of searchRes.query.search.slice(0, 2)) {
-            const sumUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(item.title)}`;
-            const sumRes = await this.fetchJson(sumUrl, 3500);
-            const img = sumRes?.originalimage?.source || sumRes?.thumbnail?.source;
-            if (img) {
-              covers.push({
-                url: img,
-                previewUrl: img,
-                type: 'cover',
-                label: `${sumRes.title || cleanTitle} - Wikipedia Box Art`,
-                source: 'Wikipedia Official Article',
-              });
-              banners.push({
-                url: img,
-                previewUrl: img,
-                type: 'banner',
-                label: `${sumRes.title || cleanTitle} - Wikipedia Hero`,
-                source: 'Wikipedia Official Article',
-              });
+        const searchRes = await this.fetchJson(searchUrl, 2500);
+        if (searchRes?.query?.search && Array.isArray(searchRes.query.search)) {
+          const topItems = searchRes.query.search.slice(0, 2);
+          const summaries = await Promise.allSettled(
+            topItems.map((item: any) =>
+              this.fetchJson(
+                `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(item.title)}`,
+                2500
+              )
+            )
+          );
+          for (const res of summaries) {
+            if (res.status === 'fulfilled' && res.value) {
+              const sumRes = res.value;
+              const img = sumRes?.originalimage?.source || sumRes?.thumbnail?.source;
+              if (img) {
+                localCovers.push({
+                  url: img,
+                  previewUrl: img,
+                  type: 'cover',
+                  label: `${sumRes.title || cleanTitle} - Wikipedia Box Art`,
+                  source: 'Wikipedia Official Article',
+                });
+                localBanners.push({
+                  url: img,
+                  previewUrl: img,
+                  type: 'banner',
+                  label: `${sumRes.title || cleanTitle} - Wikipedia Hero`,
+                  source: 'Wikipedia Official Article',
+                });
+              }
             }
           }
         }
       } catch {}
+      return { covers: localCovers, banners: localBanners };
+    };
 
-      // 3. Search Steam Store API
-      const searchUrl = `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(
-        cleanTitle
-      )}&l=english&cc=US`;
-      const res = await this.fetchJson(searchUrl, 4000);
+    const taskSteam = async () => {
+      const localCovers: ArtworkOption[] = [];
+      const localBanners: ArtworkOption[] = [];
+      try {
+        const searchUrl = `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(
+          cleanTitle
+        )}&l=english&cc=US`;
+        const res = await this.fetchJson(searchUrl, 2500);
 
-      if (res && res.items && res.items.length > 0) {
-        for (const item of res.items.slice(0, 4)) {
-          const appId = item.id;
-          const gameName = item.name;
+        if (res && res.items && res.items.length > 0) {
+          const items = res.items.slice(0, 4);
+          for (const item of items) {
+            const appId = item.id;
+            const gameName = item.name;
 
-          // Vertical box arts (2:3 aspect)
-          covers.push({
-            url: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_600x900.jpg`,
-            previewUrl: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_600x900.jpg`,
-            type: 'cover',
-            label: `${gameName} - Official Poster`,
-            source: 'Steam Library CDN',
-          });
+            localCovers.push({
+              url: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_600x900.jpg`,
+              previewUrl: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_600x900.jpg`,
+              type: 'cover',
+              label: `${gameName} - Official Poster`,
+              source: 'Steam Library CDN',
+            });
 
-          covers.push({
-            url: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_600x900_2x.jpg`,
-            previewUrl: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_600x900_2x.jpg`,
-            type: 'cover',
-            label: `${gameName} - Ultra HD Box Art`,
-            source: 'Steam High-Res CDN',
-          });
+            localCovers.push({
+              url: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_600x900_2x.jpg`,
+              previewUrl: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_600x900_2x.jpg`,
+              type: 'cover',
+              label: `${gameName} - Ultra HD Box Art`,
+              source: 'Steam High-Res CDN',
+            });
 
-          // Horizontal hero banners (16:9 aspect)
-          banners.push({
-            url: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_hero.jpg`,
-            previewUrl: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_hero.jpg`,
-            type: 'banner',
-            label: `${gameName} - Hero Artwork`,
-            source: 'Steam Banner CDN',
-          });
+            localBanners.push({
+              url: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_hero.jpg`,
+              previewUrl: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_hero.jpg`,
+              type: 'banner',
+              label: `${gameName} - Hero Artwork`,
+              source: 'Steam Banner CDN',
+            });
 
-          banners.push({
-            url: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/header.jpg`,
-            previewUrl: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/header.jpg`,
-            type: 'banner',
-            label: `${gameName} - Store Header`,
-            source: 'Steam Store',
-          });
-
-          // Try fetching screenshots for wide page backgrounds
-          try {
-            const detailUrl = `https://store.steampowered.com/api/appdetails?appids=${appId}`;
-            const details = await this.fetchJson(detailUrl, 3000);
-            if (details && details[appId] && details[appId].data && details[appId].data.screenshots) {
-              const screens = details[appId].data.screenshots;
-              for (let i = 0; i < Math.min(3, screens.length); i++) {
-                banners.push({
-                  url: screens[i].path_full,
-                  previewUrl: screens[i].path_thumbnail,
-                  type: 'banner',
-                  label: `${gameName} - Cinematic Wallpaper #${i + 1}`,
-                  source: 'Steam HD Screenshot',
-                });
-              }
-            }
-          } catch {
-            // Screenshots fetch skipped
+            localBanners.push({
+              url: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/header.jpg`,
+              previewUrl: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/header.jpg`,
+              type: 'banner',
+              label: `${gameName} - Store Header`,
+              source: 'Steam Store',
+            });
           }
-        }
-      }
 
-      // 4. Query GOG Catalog for additional official artwork
+          // Fetch screenshots in parallel for the first 2 items with tight timeout
+          const detailPromises = items.slice(0, 2).map(async (item: any) => {
+            try {
+              const detailUrl = `https://store.steampowered.com/api/appdetails?appids=${item.id}`;
+              const details = await this.fetchJson(detailUrl, 2000);
+              const appId = item.id;
+              if (details && details[appId]?.data?.screenshots) {
+                const screens = details[appId].data.screenshots;
+                for (let i = 0; i < Math.min(3, screens.length); i++) {
+                  localBanners.push({
+                    url: screens[i].path_full,
+                    previewUrl: screens[i].path_thumbnail,
+                    type: 'banner',
+                    label: `${item.name} - Cinematic Wallpaper #${i + 1}`,
+                    source: 'Steam HD Screenshot',
+                  });
+                }
+              }
+            } catch {}
+          });
+          await Promise.allSettled(detailPromises);
+        }
+      } catch {}
+      return { covers: localCovers, banners: localBanners };
+    };
+
+    const taskGOG = async () => {
+      const localCovers: ArtworkOption[] = [];
+      const localBanners: ArtworkOption[] = [];
       try {
         const gogUrl = `https://catalog.gog.com/v1/catalog?query=${encodeURIComponent(cleanTitle)}`;
-        const gogRes = await this.fetchJson(gogUrl, 3500);
+        const gogRes = await this.fetchJson(gogUrl, 2500);
         if (gogRes && gogRes.products && gogRes.products.length > 0) {
           for (const product of gogRes.products.slice(0, 3)) {
             if (product.coverVertical) {
-              covers.push({
+              localCovers.push({
                 url: product.coverVertical,
                 previewUrl: product.coverVertical,
                 type: 'cover',
@@ -255,7 +290,7 @@ export class ImageManager {
               });
             }
             if (product.coverHorizontal) {
-              banners.push({
+              localBanners.push({
                 url: product.coverHorizontal,
                 previewUrl: product.coverHorizontal,
                 type: 'banner',
@@ -265,27 +300,29 @@ export class ImageManager {
             }
           }
         }
-      } catch {
-        // GOG query skipped
-      }
+      } catch {}
+      return { covers: localCovers, banners: localBanners };
+    };
 
-      // 5. Query Internet Archive for Vintage PC, DOS, and Retro Software Box Art
+    const taskArchive = async () => {
+      const localCovers: ArtworkOption[] = [];
+      const localBanners: ArtworkOption[] = [];
       try {
         const archUrl = `https://archive.org/advancedsearch.php?q=title%3A(${encodeURIComponent(
           cleanTitle
         )})+AND+mediatype%3A(software)&fl[]=identifier,title,description&rows=4&output=json`;
-        const archRes = await this.fetchJson(archUrl, 3500);
+        const archRes = await this.fetchJson(archUrl, 2500);
         if (archRes?.response?.docs && archRes.response.docs.length > 0) {
           for (const doc of archRes.response.docs) {
             const imgUrl = `https://archive.org/services/img/${doc.identifier}`;
-            covers.push({
+            localCovers.push({
               url: imgUrl,
               previewUrl: imgUrl,
               type: 'cover',
               label: `${doc.title || cleanTitle} - Vintage Box Scan`,
               source: 'Internet Archive Classics',
             });
-            banners.push({
+            localBanners.push({
               url: imgUrl,
               previewUrl: imgUrl,
               type: 'banner',
@@ -294,45 +331,101 @@ export class ImageManager {
             });
           }
         }
-      } catch {
-        // Archive query skipped
-      }
+      } catch {}
+      return { covers: localCovers, banners: localBanners };
+    };
 
-      // 6. Query Web Game Database (MobyGames, SteamGridDB, LaunchBox, Fanart via DuckDuckGo)
+    const taskDDG = async () => {
+      const localCovers: ArtworkOption[] = [];
+      const localBanners: ArtworkOption[] = [];
       try {
-        const ddgCovers = await this.fetchDuckDuckGoImages(`${cleanTitle} video game box art cover`, 'photo', 6);
-        for (const item of ddgCovers) {
-          covers.push({
-            url: item.url,
-            previewUrl: item.thumbnail || item.url,
-            type: 'cover',
-            label: `${item.title || cleanTitle} - Web Box Art`,
-            source: 'Web Database (MobyGames / Fanart / SteamGrid)',
-          });
+        const [ddgCoversRes, ddgBannersRes] = await Promise.allSettled([
+          this.fetchDuckDuckGoImages(`${cleanTitle} video game box art cover`, 'photo', 6),
+          this.fetchDuckDuckGoImages(`${cleanTitle} video game wallpaper banner`, 'wallpaper', 4),
+        ]);
+
+        if (ddgCoversRes.status === 'fulfilled') {
+          for (const item of ddgCoversRes.value) {
+            localCovers.push({
+              url: item.url,
+              previewUrl: item.thumbnail || item.url,
+              type: 'cover',
+              label: `${item.title || cleanTitle} - Web Box Art`,
+              source: 'Web Database (MobyGames / Fanart / SteamGrid)',
+            });
+          }
         }
 
-        const ddgBanners = await this.fetchDuckDuckGoImages(`${cleanTitle} video game wallpaper banner`, 'wallpaper', 4);
-        for (const item of ddgBanners) {
-          banners.push({
-            url: item.url,
-            previewUrl: item.thumbnail || item.url,
-            type: 'banner',
-            label: `${item.title || cleanTitle} - HD Wallpaper`,
-            source: 'Web HD Wallpaper',
-          });
+        if (ddgBannersRes.status === 'fulfilled') {
+          for (const item of ddgBannersRes.value) {
+            localBanners.push({
+              url: item.url,
+              previewUrl: item.thumbnail || item.url,
+              type: 'banner',
+              label: `${item.title || cleanTitle} - HD Wallpaper`,
+              source: 'Web HD Wallpaper',
+            });
+          }
         }
-      } catch {
-        // Web search skipped
-      }
-    } catch (err) {
-      console.warn('Artwork search error:', err);
+      } catch {}
+      return { covers: localCovers, banners: localBanners };
+    };
+
+    // Execute all providers in parallel
+    const [libretroRes, steamRes, gogRes, wikiRes, archiveRes, ddgRes] = await Promise.allSettled([
+      taskLibretro(),
+      taskSteam(),
+      taskGOG(),
+      taskWikipedia(),
+      taskArchive(),
+      taskDDG(),
+    ]);
+
+    // Priority 1: Libretro (official console/retro boxart)
+    if (libretroRes.status === 'fulfilled' && libretroRes.value) {
+      if (libretroRes.value.cover) covers.push(libretroRes.value.cover);
+      if (libretroRes.value.banner) banners.push(libretroRes.value.banner);
+    }
+
+    // Priority 2: Steam (high-res official assets)
+    if (steamRes.status === 'fulfilled') {
+      covers.push(...steamRes.value.covers);
+      banners.push(...steamRes.value.banners);
+    }
+
+    // Priority 3: GOG official artwork
+    if (gogRes.status === 'fulfilled') {
+      covers.push(...gogRes.value.covers);
+      banners.push(...gogRes.value.banners);
+    }
+
+    // Priority 4: Wikipedia retail box arts
+    if (wikiRes.status === 'fulfilled') {
+      covers.push(...wikiRes.value.covers);
+      banners.push(...wikiRes.value.banners);
+    }
+
+    // Priority 5: Internet Archive retro & vintage software
+    if (archiveRes.status === 'fulfilled') {
+      covers.push(...archiveRes.value.covers);
+      banners.push(...archiveRes.value.banners);
+    }
+
+    // Priority 6: Web search database
+    if (ddgRes.status === 'fulfilled') {
+      covers.push(...ddgRes.value.covers);
+      banners.push(...ddgRes.value.banners);
     }
 
     // Deduplicate covers and banners by URL
     const uniqueCovers = covers.filter((c, idx, arr) => arr.findIndex((x) => x.url === c.url) === idx);
     const uniqueBanners = banners.filter((b, idx, arr) => arr.findIndex((x) => x.url === b.url) === idx);
 
-    return { covers: uniqueCovers, banners: uniqueBanners };
+    const result = { covers: uniqueCovers, banners: uniqueBanners };
+    // Cache for 15 minutes
+    this.artworkCache.set(cacheKey, { covers: uniqueCovers, banners: uniqueBanners, timestamp: Date.now() });
+
+    return result;
   }
 
   private async fetchDuckDuckGoImages(
@@ -346,7 +439,7 @@ export class ImageManager {
     try {
       const tokenRes = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(query)}`, {
         headers: { 'User-Agent': BROWSER_UA },
-        signal: AbortSignal.timeout(3500),
+        signal: AbortSignal.timeout(2500),
       });
       const html = await tokenRes.text();
       const vqdMatch = html.match(/vqd=([0-9-]+)/);
@@ -361,7 +454,7 @@ export class ImageManager {
           'User-Agent': BROWSER_UA,
           'Referer': 'https://duckduckgo.com/',
         },
-        signal: AbortSignal.timeout(3500),
+        signal: AbortSignal.timeout(2500),
       });
 
       if (!imgRes.ok) return [];
