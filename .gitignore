@@ -6,3 +6,5 @@ release/
 .launcher-data/
 *.log
 .DS_Store
+*backup*.json
+aegis-backup-*.json

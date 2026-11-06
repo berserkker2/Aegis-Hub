@@ -2,7 +2,7 @@
 title Aegis Hub - Build & Release Manager
 cd /d "%~dp0"
 
-for /f "tokens=*" %%v in ('node -e "const d=new Date(); const pad=(n)=>String(n).padStart(2,'0'); console.log('b'+pad(d.getDate())+pad(d.getMonth()+1)+d.getFullYear());"') do set BUILD_VER=%%v
+for /f "tokens=*" %%v in ('node scripts/get-build-version.cjs') do set BUILD_VER=%%v
 
 :menu
 cls

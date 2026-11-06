@@ -23,13 +23,21 @@ export const TitleBar: React.FC<TitleBarProps> = React.memo(({
       window.api.isMaximized().then(setIsMaximized);
     }
 
-    // Check updates silently in background on startup
+    // Check updates silently in background on startup if autoCheckUpdates is enabled (default true)
     if (window.api?.checkForUpdates) {
-      window.api.checkForUpdates().then((res) => {
-        if (res?.hasUpdate && res.latestVersion) {
-          setUpdateAvailableTag(res.latestVersion);
-        }
-      }).catch(() => {});
+      const runCheck = async () => {
+        try {
+          const settings = await window.api?.getSettings?.();
+          if (settings && settings.autoCheckUpdates === false) {
+            return; // Auto-updates disabled by user
+          }
+          const res = await window.api.checkForUpdates();
+          if (res?.hasUpdate && res.latestVersion) {
+            setUpdateAvailableTag(res.latestVersion);
+          }
+        } catch {}
+      };
+      runCheck();
     }
   }, []);
 

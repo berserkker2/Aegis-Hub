@@ -148,6 +148,7 @@ export interface LauncherSettings {
   showHiddenGamesCollection?: boolean;
   showPlatformBadges?: boolean;
   filterAdultGames?: boolean;
+  autoCheckUpdates?: boolean;
   trayIconColor?: 'white' | 'black';
   geminiApiKey?: string;
   rawgApiKey?: string;

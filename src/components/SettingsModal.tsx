@@ -613,6 +613,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="space-y-2">
                   <label className="flex items-center justify-between p-3 rounded-xl bg-slate-950/50 border border-slate-800 hover:border-slate-700 cursor-pointer">
                     <div className="pr-4">
+                      <span className="text-xs font-semibold text-slate-200">Check for Updates Automatically</span>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Automatically check GitHub Releases on startup and notify when new versions are available.
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={currentSettings.autoCheckUpdates !== false}
+                      onChange={(e) => handleUpdate({ autoCheckUpdates: e.target.checked })}
+                      className="w-4 h-4 rounded text-blue-600 bg-slate-800 border-slate-700 focus:ring-0 cursor-pointer"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between p-3 rounded-xl bg-slate-950/50 border border-slate-800 hover:border-slate-700 cursor-pointer">
+                    <div className="pr-4">
                       <span className="text-xs font-semibold text-slate-200">Minimize to System Tray on Close</span>
                       <p className="text-[11px] text-slate-400 mt-0.5">
                         Clicking the close (X) button keeps Aegis Hub running in the background near the Windows clock. Right-click the tray icon to exit.
@@ -1189,17 +1204,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
 
-                {/* Check Update Button */}
-                <div className="shrink-0 flex flex-col items-center gap-2">
+                {/* Check Update Button & Auto Toggle */}
+                <div className="shrink-0 flex flex-col items-center md:items-end gap-2">
                   <button
                     type="button"
                     onClick={checkForAppUpdates}
                     disabled={isCheckingUpdate || isDownloadingUpdate}
-                    className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-blue-600/20"
+                    className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-blue-600/20 cursor-pointer"
                   >
                     <FolderSync className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
                     <span>{isCheckingUpdate ? 'Checking...' : 'Check for Updates'}</span>
                   </button>
+
+                  <label className="flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-slate-300 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={currentSettings.autoCheckUpdates !== false}
+                      onChange={(e) => handleUpdate({ autoCheckUpdates: e.target.checked })}
+                      className="w-3.5 h-3.5 rounded text-blue-600 bg-slate-800 border-slate-700 focus:ring-0 cursor-pointer"
+                    />
+                    <span>Auto-check on startup</span>
+                  </label>
                 </div>
               </div>
 

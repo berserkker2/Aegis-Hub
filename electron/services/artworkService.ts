@@ -3,7 +3,70 @@ import http from 'http';
 import { ArtworkSearchResult } from '../../src/types/game';
 
 // Curated high quality distinct images for popular titles
-const KNOWN_GAMES_ART: Record<string, { cover: string; banner: string; genres: string[]; dev: string }> = {
+const KNOWN_GAMES_ART: Record<string, { cover: string; banner: string; genres: string[]; dev: string; description?: string }> = {
+  'alan wake 2': {
+    cover: 'https://upload.wikimedia.org/wikipedia/en/e/ed/Alan_Wake_2_box_art.jpg',
+    banner: 'https://cdn2.unrealengine.com/egs-alanwake2-remedyentertainment-g1a-00-1920x1080-69273df8996b.jpg',
+    genres: ['Survival Horror', 'Psychological Horror', 'Action-Adventure'],
+    dev: 'Remedy Entertainment',
+    description: 'Alan Wake 2 is a psychological survival horror game developed by Remedy Entertainment and published by Epic Games Publishing. Uncover a nightmare reality spanning two characters: Saga Anderson and Alan Wake.',
+  },
+  'rule of rose': {
+    cover: 'https://upload.wikimedia.org/wikipedia/en/d/d8/RuleofRose.jpg',
+    banner: 'https://upload.wikimedia.org/wikipedia/en/d/d8/RuleofRose.jpg',
+    genres: ['Survival Horror', 'Psychological Horror'],
+    dev: 'Punchline',
+    description: 'Rule of Rose is a classic psychological survival horror game set in 1930s England. The game follows Jennifer, who navigates an unsettling world ruled by girls known as the Red Crayon Aristocrats.',
+  },
+  'haunting ground': {
+    cover: 'https://upload.wikimedia.org/wikipedia/en/7/7e/HauntingGround_NA_PS2cover.jpg',
+    banner: 'https://upload.wikimedia.org/wikipedia/en/7/7e/HauntingGround_NA_PS2cover.jpg',
+    genres: ['Survival Horror'],
+    dev: 'Capcom',
+    description: 'Haunting Ground is a survival horror game by Capcom for PlayStation 2. The player controls Fiona Belli, escaping a sinister medieval castle with the aid of a white German Shepherd named Hewie.',
+  },
+  'shadow of the colossus': {
+    cover: 'https://upload.wikimedia.org/wikipedia/en/f/f8/Shadow_of_the_Colossus_%282005%29_cover.jpg',
+    banner: 'https://upload.wikimedia.org/wikipedia/en/f/f8/Shadow_of_the_Colossus_%282005%29_cover.jpg',
+    genres: ['Action-Adventure', 'Fantasy'],
+    dev: 'Team Ico',
+    description: 'Shadow of the Colossus follows Wander, a young man who journeys into a forbidden territory to defeat sixteen colossal beings in order to restore the life of a girl named Mono.',
+  },
+  'fatal frame iii': {
+    cover: 'https://upload.wikimedia.org/wikipedia/en/9/91/Fatal_Frame_III_Coverart.jpg',
+    banner: 'https://upload.wikimedia.org/wikipedia/en/9/91/Fatal_Frame_III_Coverart.jpg',
+    genres: ['Survival Horror'],
+    dev: 'Tecmo',
+    description: 'Fatal Frame III: The Tormented is a Japanese survival horror game following freelance photographer Rei Kurosawa, who encounters mysterious apparitions connected to a curse known as the Tattooed Curse.',
+  },
+  'fatal frame ii': {
+    cover: 'https://cdn.cloudflare.steamstatic.com/steam/apps/3920610/library_600x900.jpg',
+    banner: 'https://cdn.cloudflare.steamstatic.com/steam/apps/3920610/library_hero.jpg',
+    genres: ['Survival Horror', 'Psychological Horror'],
+    dev: 'Tecmo',
+    description: 'Fatal Frame II: Crimson Butterfly follows twin sisters Mio and Mayu Amakura as they explore an abandoned village haunted by spirits, armed with the Camera Obscura.',
+  },
+  'rpcs3': {
+    cover: 'https://raw.githubusercontent.com/RPCS3/rpcs3-binaries/master/Icons/rpcs3_icon.png',
+    banner: 'https://raw.githubusercontent.com/RPCS3/rpcs3-binaries/master/Icons/rpcs3_icon.png',
+    genres: ['Utility', 'Emulator'],
+    dev: 'RPCS3 Team',
+    description: 'RPCS3 is a multi-platform open-source Sony PlayStation 3 emulator and debugger written in C++ for Windows, Linux, macOS and FreeBSD.',
+  },
+  'scp secret files': {
+    cover: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1718130/library_600x900.jpg',
+    banner: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1718130/library_hero.jpg',
+    genres: ['Adventure', 'Indie', 'Horror'],
+    dev: 'GameZoo Studio',
+    description: 'SCP: Secret Files is a collection of paranormal cases from the SCP Foundation, an organization tasked with containing anomalous phenomena.',
+  },
+  'disgaea - afternoon of darkness': {
+    cover: 'https://upload.wikimedia.org/wikipedia/en/8/87/Disgaea_Afternoon_of_Darkness_Cover.jpg',
+    banner: 'https://upload.wikimedia.org/wikipedia/en/8/87/Disgaea_Afternoon_of_Darkness_Cover.jpg',
+    genres: ['Tactical RPG', 'Turn-Based Strategy'],
+    dev: 'Nippon Ichi Software',
+    description: 'Disgaea: Afternoon of Darkness is an enhanced tactical role-playing game featuring Prince Laharl as he awakens to reclaim his father the Overlords throne in the Netherworld.',
+  },
   'resident evil 2': {
     cover: 'https://cdn.cloudflare.steamstatic.com/steam/apps/883710/library_600x900.jpg',
     banner: 'https://cdn.cloudflare.steamstatic.com/steam/apps/883710/library_hero.jpg',
@@ -328,30 +391,33 @@ export async function lookupLibretroArtwork(
 }
 
 /**
- * Searches Wikipedia's official articles for high-definition original box art
+ * Searches Wikipedia's official articles for high-definition original box art and summary
  */
 export async function lookupWikipediaArtwork(cleanTitle: string): Promise<ArtworkSearchResult | null> {
-  try {
-    const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
-      cleanTitle + ' video game'
-    )}&format=json&utf8=1`;
-    const searchRes = await fetchJson(searchUrl, 3500);
-    const top = searchRes?.query?.search?.[0];
-    if (top && top.title) {
-      const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(top.title)}`;
-      const summaryRes = await fetchJson(summaryUrl, 3500);
-      const cover = summaryRes?.originalimage?.source || summaryRes?.thumbnail?.source;
-      if (cover) {
-        return {
-          title: summaryRes.title || cleanTitle,
-          coverUrl: cover,
-          bannerUrl: cover,
-          genres: ['Console / Retro'],
-          description: summaryRes.extract,
-        };
+  const queries = [cleanTitle + ' video game', cleanTitle];
+  for (const q of queries) {
+    try {
+      const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
+        q
+      )}&format=json&utf8=1`;
+      const searchRes = await fetchJson(searchUrl, 3500);
+      const top = searchRes?.query?.search?.[0];
+      if (top && top.title) {
+        const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(top.title)}`;
+        const summaryRes = await fetchJson(summaryUrl, 3500);
+        const cover = summaryRes?.originalimage?.source || summaryRes?.thumbnail?.source;
+        if (cover) {
+          return {
+            title: summaryRes.title || cleanTitle,
+            coverUrl: cover,
+            bannerUrl: cover,
+            genres: ['Console / Retro'],
+            description: summaryRes.extract,
+          };
+        }
       }
-    }
-  } catch {}
+    } catch {}
+  }
   return null;
 }
 
@@ -362,13 +428,13 @@ export function cleanGameTitle(rawTitle: string): string {
   let t = rawTitle.replace(/\.[a-z0-9]+$/i, '');
   // Remove leading ROM scene numbers like '4840 - ', '0832 - ', '3055 - ', '5535_-_'
   t = t.replace(/^\d{3,5}\s*[-_.]+\s*/i, '');
-  // Remove version numbers
-  t = t.replace(/\bv?\d+(\.\d+)+\b/gi, '');
+  // Remove version numbers like v0.8.5, 1.0.0, etc.
+  t = t.replace(/\bv?\d+(\.\d+)+[a-z]?\b/gi, '');
   // Remove dump tags, region tags
   t = t.replace(/\(.*?\)/g, ' ');
   t = t.replace(/\[.*?\]/g, ' ');
 
-  // Handle specific known translations/hacks
+  // Handle specific known translations/hacks/titles
   if (/^b-gyakuken2/i.test(t)) return 'Ace Attorney Investigations 2';
   if (/^tott_en|Tales_Of_The_Tempest/i.test(t)) return 'Tales of the Tempest';
   if (/^Fata\s*lFrame\s*3/i.test(t)) return 'Fatal Frame III - The Tormented';
@@ -376,9 +442,14 @@ export function cleanGameTitle(rawTitle: string): string {
   if (/^Fata\s*lFrame/i.test(t)) return 'Fatal Frame';
   if (/^disgaea\s*psp/i.test(t)) return 'Disgaea - Afternoon of Darkness';
   if (/^brave\s*story/i.test(t)) return 'Brave Story - New Traveler';
+  if (/Artifact\s*Seeker/i.test(t)) return 'Artifact Seeker';
+  if (/SCP\s*Secret\s*Files/i.test(t)) return 'SCP Secret Files';
+  if (/Silent\s*Hill\s*2/i.test(t)) return 'Silent Hill 2';
+  if (/Castlevania\s*Belmont/i.test(t)) return "Castlevania Belmont's Curse";
+  if (/Onimusha\s*Way/i.test(t)) return 'Onimusha Way of the Sword';
 
-  // Remove release tags
-  t = t.replace(/\b(undub|independent|repack|fitgirl|codex|cpi|flt|skidrow|plaza|goldberg|rip|portable|setup|build\s*\d+|gog|steam|x64|x86|win64|crack|cracked|trashman|legacy|venom|xenophobia|supremacy|sweetnds|ddumpers)\b/gi, ' ');
+  // Remove release tags and build markers
+  t = t.replace(/\b(undub|independent|repack|fitgirl|codex|cpi|flt|skidrow|plaza|goldberg|rip|portable|setup|build\s*\d*|remake|gog|steam|x64|x86|win64|crack|cracked|trashman|legacy|venom|xenophobia|supremacy|sweetnds|ddumpers)\b/gi, ' ');
 
   // Expand CamelCase like FatalFrame3 -> Fatal Frame 3
   if (/^[a-z]+[A-Z0-9]/i.test(t) && !t.includes(' ')) {
@@ -412,6 +483,7 @@ export async function lookupGameArtwork(title: string, platformOrEmuId?: string)
         bannerUrl: val.banner,
         genres: val.genres,
         developer: val.dev,
+        description: val.description,
       };
     }
   }
@@ -436,36 +508,69 @@ export async function lookupGameArtwork(title: string, platformOrEmuId?: string)
     const res = await fetchJson(searchUrl, 3500);
 
     if (res && res.items && res.items.length > 0) {
-      const match = res.items[0];
-      const appId = match.id;
-      const matchedTitle = match.name;
+      // Find a matching item - verify similarity so unrelated hits are discarded
+      const cleanLower = cleanTitle.toLowerCase();
+      let match = res.items.find((it: any) => {
+        const itLower = (it.name || '').toLowerCase();
+        return itLower === cleanLower || itLower.includes(cleanLower) || cleanLower.includes(itLower);
+      });
 
-      const coverUrl = `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_600x900.jpg`;
-      const bannerUrl = `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_hero.jpg`;
-
-      // Try fetching details for genres and dev
-      let genres = ['Action', 'Adventure'];
-      let dev = '';
-      try {
-        const detailRes = await fetchJson(`https://store.steampowered.com/api/appdetails?appids=${appId}`, 3000);
-        if (detailRes && detailRes[appId] && detailRes[appId].data) {
-          const d = detailRes[appId].data;
-          if (Array.isArray(d.genres)) {
-            genres = d.genres.map((g: any) => g.description);
-          }
-          if (Array.isArray(d.developers) && d.developers.length > 0) {
-            dev = d.developers[0];
-          }
+      if (!match) {
+        const first = res.items[0];
+        const firstWords = (first.name || '').toLowerCase().split(/\s+/).filter((w: string) => w.length > 3);
+        const cleanWords = cleanLower.split(/\s+/).filter((w: string) => w.length > 3);
+        const common = cleanWords.filter((w: string) => firstWords.includes(w));
+        if (common.length >= Math.min(2, cleanWords.length) && common.length > 0) {
+          match = first;
         }
-      } catch {}
+      }
 
-      return {
-        title: matchedTitle || title,
-        coverUrl,
-        bannerUrl,
-        genres,
-        developer: dev,
-      };
+      if (match) {
+        const appId = match.id;
+        const matchedTitle = match.name;
+
+        const coverUrl = `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_600x900.jpg`;
+        const bannerUrl = `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_hero.jpg`;
+
+        // Try fetching details for genres, dev, and short description
+        let genres = ['Action', 'Adventure'];
+        let dev = '';
+        let publisher = '';
+        let releaseDate = '';
+        let description = '';
+
+        try {
+          const detailRes = await fetchJson(`https://store.steampowered.com/api/appdetails?appids=${appId}`, 3000);
+          if (detailRes && detailRes[appId] && detailRes[appId].data) {
+            const d = detailRes[appId].data;
+            if (Array.isArray(d.genres)) {
+              genres = d.genres.map((g: any) => g.description);
+            }
+            if (Array.isArray(d.developers) && d.developers.length > 0) {
+              dev = d.developers[0];
+            }
+            if (Array.isArray(d.publishers) && d.publishers.length > 0) {
+              publisher = d.publishers[0];
+            }
+            if (d.release_date?.date) {
+              releaseDate = d.release_date.date;
+            }
+            if (d.short_description || d.about_the_game) {
+              description = d.short_description || d.about_the_game;
+            }
+          }
+        } catch {}
+
+        return {
+          title: matchedTitle || title,
+          coverUrl,
+          bannerUrl,
+          genres,
+          developer: dev,
+          description: description || undefined,
+          releaseDate: releaseDate || undefined,
+        };
+      }
     }
   } catch {}
 
@@ -483,12 +588,13 @@ export async function lookupGameArtwork(title: string, platformOrEmuId?: string)
           bannerUrl: p.coverHorizontal || p.coverVertical,
           genres: Array.isArray(p.genres) ? p.genres.map((g: any) => g.name || g) : ['PC Game'],
           developer: Array.isArray(p.developers) ? p.developers[0] : undefined,
+          description: p.description || undefined,
         };
       }
     }
   } catch {}
 
-  // 5. Fallback: check Wikipedia
+  // 5. Fallback: check Wikipedia (covers console, retro, and exclusive PC games)
   const wikiArt = await lookupWikipediaArtwork(cleanTitle);
   if (wikiArt) return wikiArt;
 

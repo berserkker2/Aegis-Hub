@@ -32,12 +32,8 @@ if (fs.existsSync(pkgPath)) {
   pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
 }
 
-const now = new Date();
-const day = String(now.getDate()).padStart(2, '0');
-const month = String(now.getMonth() + 1).padStart(2, '0');
-const year = now.getFullYear();
-const defaultBuildTag = `b${day}${month}${year}`;
-const formattedDate = `${day}/${month}/${year}`;
+const { getNextBuildVersion } = require('./get-build-version.cjs');
+const { versionTag, formattedDate } = getNextBuildVersion();
 
 function askQuestion(query) {
   const rl = readline.createInterface({
@@ -142,7 +138,7 @@ async function main() {
     targetArg = passedArgs.filter((a) => a !== '--publish').join(' ');
   }
 
-  const versionTag = defaultBuildTag;
+  // versionTag and formattedDate computed dynamically from getNextBuildVersion()
   console.log(`\n--------------------------------------------------------`);
   console.log(`  Versão do Build: ${versionTag}`);
   console.log(`  Data: ${formattedDate}`);

@@ -26,6 +26,7 @@ const defaultSettings: LauncherSettings = {
   showHiddenGamesCollection: false,
   showPlatformBadges: true,
   filterAdultGames: true,
+  autoCheckUpdates: true,
   trayIconColor: 'white',
   customApps: [
     {

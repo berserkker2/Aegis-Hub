@@ -29,10 +29,13 @@ class UpdaterService {
   private isDownloading = false;
 
   /**
-   * Cleans version string (e.g. 'v1.0.1' -> '1.0.1' or 'b06112026')
+   * Cleans version string (e.g. 'v1.0.0-b06112026' -> 'b06112026' or 'v1.0.1' -> '1.0.1')
    */
   private cleanVersion(v: string): string {
-    return (v || '').trim().replace(/^v/i, '');
+    return (v || '')
+      .trim()
+      .replace(/^v/i, '')
+      .replace(/^1\.0\.0-/i, '');
   }
 
   /**
@@ -62,14 +65,19 @@ class UpdaterService {
       return 0;
     }
 
-    // Support build-date style versions like b06112026 (DDMMYYYY)
-    const dateMatchA = cleanA.match(/^b?(\d{2})(\d{2})(\d{4})$/i);
-    const dateMatchB = cleanB.match(/^b?(\d{2})(\d{2})(\d{4})$/i);
+    // Support build-date style versions like b06112026 or b06112026-1 (DDMMYYYY[-REV])
+    const dateMatchA = cleanA.match(/^b?(\d{2})(\d{2})(\d{4})(?:[-.]?(\d+))?$/i);
+    const dateMatchB = cleanB.match(/^b?(\d{2})(\d{2})(\d{4})(?:[-.]?(\d+))?$/i);
     if (dateMatchA && dateMatchB) {
       const numA = parseInt(`${dateMatchA[3]}${dateMatchA[2]}${dateMatchA[1]}`, 10);
       const numB = parseInt(`${dateMatchB[3]}${dateMatchB[2]}${dateMatchB[1]}`, 10);
       if (numA > numB) return 1;
       if (numA < numB) return -1;
+
+      const revA = parseInt(dateMatchA[4] || '0', 10);
+      const revB = parseInt(dateMatchB[4] || '0', 10);
+      if (revA > revB) return 1;
+      if (revA < revB) return -1;
       return 0;
     }
 
@@ -77,35 +85,65 @@ class UpdaterService {
   }
 
   /**
-   * Checks GitHub Releases API for the latest published release
+   * Checks GitHub Releases API for the latest published release with installer assets
    */
   public async checkForUpdates(): Promise<UpdateInfo> {
     const currentVer = APP_VERSION_INFO.version || app.getVersion();
-    const url = `https://api.github.com/repos/${this.owner}/${this.repo}/releases/latest`;
+    const headers = {
+      'User-Agent': 'AegisHub-Updater/1.0',
+      Accept: 'application/vnd.github.v3+json',
+    };
 
     try {
-      const res = await fetch(url, {
-        headers: {
-          'User-Agent': 'AegisHub-Updater/1.0',
-          Accept: 'application/vnd.github.v3+json',
-        },
-        signal: AbortSignal.timeout(10000),
-      });
+      // 1. Fetch recent releases to find the latest valid release with installer binary
+      let release: any = null;
+      try {
+        const listRes = await fetch(`https://api.github.com/repos/${this.owner}/${this.repo}/releases?per_page=10`, {
+          headers,
+          signal: AbortSignal.timeout(10000),
+        });
+        if (listRes.ok) {
+          const releases: any[] = await listRes.json();
+          if (Array.isArray(releases) && releases.length > 0) {
+            // Find all releases that have an executable asset (.exe)
+            const withExe = releases.filter((r) => {
+              if (r.draft) return false;
+              const assets = Array.isArray(r.assets) ? r.assets : [];
+              return assets.some((a: any) => (a.name || '').toLowerCase().endsWith('.exe'));
+            });
 
-      if (res.status === 404) {
-        return {
-          hasUpdate: false,
-          currentVersion: currentVer,
-          latestVersion: currentVer,
-          releaseNotes: 'No releases published yet on GitHub repository.',
-        };
+            // Sort by version descending using compareVersions
+            withExe.sort((a, b) => this.compareVersions(b.tag_name || b.name, a.tag_name || a.name));
+            if (withExe.length > 0) {
+              release = withExe[0];
+            }
+          }
+        }
+      } catch {}
+
+      // 2. Fallback to /releases/latest if list failed
+      if (!release) {
+        const res = await fetch(`https://api.github.com/repos/${this.owner}/${this.repo}/releases/latest`, {
+          headers,
+          signal: AbortSignal.timeout(10000),
+        });
+
+        if (res.status === 404) {
+          return {
+            hasUpdate: false,
+            currentVersion: currentVer,
+            latestVersion: currentVer,
+            releaseNotes: 'No releases published yet on GitHub repository.',
+          };
+        }
+
+        if (!res.ok) {
+          throw new Error(`GitHub API responded with HTTP ${res.status}`);
+        }
+
+        release = await res.json();
       }
 
-      if (!res.ok) {
-        throw new Error(`GitHub API responded with HTTP ${res.status}`);
-      }
-
-      const release: any = await res.json();
       const latestTag = release.tag_name || release.name || '';
       const hasUpdate = this.compareVersions(latestTag, currentVer) > 0;
 

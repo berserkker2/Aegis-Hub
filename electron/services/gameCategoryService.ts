@@ -3,7 +3,7 @@ import path from 'path';
 import { app } from 'electron';
 import { Game } from '../../src/types/game';
 import { genreEnrichmentService } from './genreEnrichmentService';
-import { scrapeEmulatorGameMetadata } from './artworkService';
+import { scrapeEmulatorGameMetadata, lookupGameArtwork } from './artworkService';
 
 interface CategoryResult {
   genres: string[];
@@ -44,6 +44,9 @@ const GENERIC_DESCRIPTION_PATTERNS = [
   /Emulated title for/i,
   /Classic retro title/i,
   /Experience classic retro/i,
+  /^Found in /i,
+  /^Game added to Aegis Hub/i,
+  /^Game added to /i,
 ];
 
 const PRIORITY_GENRE_TAGS = [
@@ -322,7 +325,7 @@ export class GameCategoryService {
       } catch {}
     }
 
-    // 5. Fallback for any remaining titles lacking description
+    // 5. Fallback for any remaining titles lacking description (scrape emulator / Wikipedia / artworkService)
     if (!description && !summary) {
       try {
         const emuMeta = await scrapeEmulatorGameMetadata(game.title, game.storeId);
@@ -339,6 +342,19 @@ export class GameCategoryService {
           }
         }
       } catch {}
+
+      if (!description && !summary) {
+        try {
+          const art = await lookupGameArtwork(game.title, game.platform);
+          if (art && art.description) {
+            description = art.description;
+            summary = art.description;
+            if (art.developer && !developer) developer = art.developer;
+            if (art.genres && art.genres.length > 0 && genres.length === 0) genres = art.genres;
+            if (art.releaseDate && !releaseDate) releaseDate = art.releaseDate;
+          }
+        } catch {}
+      }
     }
 
     // Clean up empty strings or duplicates and apply genre intelligence

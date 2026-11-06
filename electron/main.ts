@@ -1457,6 +1457,7 @@ ipcMain.handle('export-backup', async () => {
       defaultPlatform: settings.defaultPlatform,
       showHiddenGamesCollection: settings.showHiddenGamesCollection,
       showPlatformBadges: settings.showPlatformBadges,
+      autoCheckUpdates: settings.autoCheckUpdates,
       trayIconColor: settings.trayIconColor,
     };
 
@@ -1464,33 +1465,78 @@ ipcMain.handle('export-backup', async () => {
     const games = store.getGames();
 
     // Export games with artwork, metadata, and custom properties
-    const backupGames = games.map((g) => ({
-      id: g.id,
-      title: g.title,
-      platform: g.platform,
-      storeId: g.storeId,
-      executablePath: g.executablePath,
-      launchArgs: g.launchArgs,
-      installPath: g.installPath,
-      installUrl: g.installUrl,
-      coverUrl: g.coverUrl,
-      bannerUrl: g.bannerUrl,
-      logoUrl: g.logoUrl,
-      iconUrl: g.iconUrl,
-      description: g.description,
-      summary: g.summary,
-      developer: g.developer,
-      publisher: g.publisher,
-      releaseDate: g.releaseDate,
-      genres: g.genres,
-      tags: g.tags,
-      rating: g.rating,
-      favorite: g.favorite || false,
-      hidden: g.hidden || false,
-      installed: g.installed !== false,
-      playtimeMinutes: g.playtimeMinutes || 0,
-      lastPlayed: g.lastPlayed,
-    }));
+    const backupGames = games.map((g) => {
+      let exportCover = g.coverUrl || '';
+      let exportBanner = g.bannerUrl || '';
+      let coverBase64: string | undefined;
+      let bannerBase64: string | undefined;
+
+      // For Steam games, ensure public CDN url is exported so it's portable
+      if (g.platform === 'steam' && g.storeId) {
+        if (!exportCover || exportCover.startsWith('aegis-media')) {
+          exportCover = `https://cdn.cloudflare.steamstatic.com/steam/apps/${g.storeId}/library_600x900.jpg`;
+        }
+        if (!exportBanner || exportBanner.startsWith('aegis-media')) {
+          exportBanner = `https://cdn.cloudflare.steamstatic.com/steam/apps/${g.storeId}/library_hero.jpg`;
+        }
+      } else {
+        // If local custom image exists on disk and is reasonable size (<= 300KB), embed base64
+        if (exportCover && exportCover.startsWith('aegis-media:///')) {
+          try {
+            let p = exportCover.replace(/^aegis-media:\/\/(?:local\/)?/i, '').replace(/^file:\/\/\/?/i, '');
+            p = decodeURIComponent(p).replace(/^[/\\]+/, '');
+            if (fs.existsSync(p)) {
+              const stat = fs.statSync(p);
+              if (stat.size <= 300 * 1024) {
+                coverBase64 = `data:image/jpeg;base64,${fs.readFileSync(p).toString('base64')}`;
+              }
+            }
+          } catch {}
+        }
+        if (exportBanner && exportBanner.startsWith('aegis-media:///')) {
+          try {
+            let p = exportBanner.replace(/^aegis-media:\/\/(?:local\/)?/i, '').replace(/^file:\/\/\/?/i, '');
+            p = decodeURIComponent(p).replace(/^[/\\]+/, '');
+            if (fs.existsSync(p)) {
+              const stat = fs.statSync(p);
+              if (stat.size <= 400 * 1024) {
+                bannerBase64 = `data:image/jpeg;base64,${fs.readFileSync(p).toString('base64')}`;
+              }
+            }
+          } catch {}
+        }
+      }
+
+      return {
+        id: g.id,
+        title: g.title,
+        platform: g.platform,
+        storeId: g.storeId,
+        executablePath: g.executablePath,
+        launchArgs: g.launchArgs,
+        installPath: g.installPath,
+        installUrl: g.installUrl,
+        coverUrl: exportCover,
+        bannerUrl: exportBanner,
+        coverBase64,
+        bannerBase64,
+        logoUrl: g.logoUrl,
+        iconUrl: g.iconUrl,
+        description: g.description,
+        summary: g.summary,
+        developer: g.developer,
+        publisher: g.publisher,
+        releaseDate: g.releaseDate,
+        genres: g.genres,
+        tags: g.tags,
+        rating: g.rating,
+        favorite: g.favorite || false,
+        hidden: g.hidden || false,
+        installed: g.installed !== false,
+        playtimeMinutes: g.playtimeMinutes || 0,
+        lastPlayed: g.lastPlayed,
+      };
+    });
 
     // For backwards compatibility with v1 restore tools
     const gamesPlaytime = backupGames.map((g) => ({
@@ -1564,6 +1610,7 @@ ipcMain.handle('import-backup', async () => {
         ...(data.settings.defaultPlatform ? { defaultPlatform: data.settings.defaultPlatform } : {}),
         ...(data.settings.showHiddenGamesCollection !== undefined ? { showHiddenGamesCollection: data.settings.showHiddenGamesCollection } : {}),
         ...(data.settings.showPlatformBadges !== undefined ? { showPlatformBadges: data.settings.showPlatformBadges } : {}),
+        ...(data.settings.autoCheckUpdates !== undefined ? { autoCheckUpdates: data.settings.autoCheckUpdates } : {}),
         ...(data.settings.trayIconColor ? { trayIconColor: data.settings.trayIconColor } : {}),
       };
       store.saveSettings(updatedSettings);
@@ -1672,6 +1719,32 @@ ipcMain.handle('import-backup', async () => {
       ? data.gamesPlaytime
       : [];
 
+    const resolveArtwork = (
+      rawUrl?: string,
+      base64?: string,
+      platform?: string,
+      storeId?: string,
+      isHero?: boolean
+    ): string => {
+      if (base64 && typeof base64 === 'string' && base64.startsWith('data:image/')) {
+        return base64;
+      }
+      if (rawUrl && typeof rawUrl === 'string') {
+        const trimmed = rawUrl.trim();
+        if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:image/')) {
+          return trimmed;
+        }
+        const local = resolveBackupArtworkUrl(trimmed);
+        if (local) return local;
+      }
+      if (platform === 'steam' && storeId) {
+        return isHero
+          ? `https://cdn.cloudflare.steamstatic.com/steam/apps/${storeId}/library_hero.jpg`
+          : `https://cdn.cloudflare.steamstatic.com/steam/apps/${storeId}/library_600x900.jpg`;
+      }
+      return '';
+    };
+
     const newGamesToAdd: Game[] = [];
 
     for (const b of backupList) {
@@ -1686,6 +1759,9 @@ ipcMain.handle('import-backup', async () => {
               (b.storeId && g.storeId && b.platform === g.platform && String(b.storeId) === String(g.storeId)) ||
               (b.title && g.title && b.title.trim().toLowerCase() === g.title.trim().toLowerCase())
           );
+
+        const cleanT = (b.title || '').trim();
+        const knownArt = cleanT ? await lookupGameArtwork(cleanT, b.platform) : null;
 
         if (existing) {
           let modified = false;
@@ -1715,10 +1791,17 @@ ipcMain.handle('import-backup', async () => {
           }
 
           // 3. Covers & Banners
-          const resolvedCover = resolveBackupArtworkUrl(b.coverUrl);
-          const resolvedBanner = resolveBackupArtworkUrl(b.bannerUrl);
+          let resolvedCover = resolveArtwork(b.coverUrl, b.coverBase64, b.platform, b.storeId, false);
+          let resolvedBanner = resolveArtwork(b.bannerUrl, b.bannerBase64, b.platform, b.storeId, true);
           const resolvedIcon = resolveBackupArtworkUrl(b.iconUrl);
           const resolvedLogo = resolveBackupArtworkUrl(b.logoUrl);
+
+          if (!resolvedCover && knownArt?.coverUrl) {
+            resolvedCover = knownArt.coverUrl;
+          }
+          if (!resolvedBanner && knownArt?.bannerUrl) {
+            resolvedBanner = knownArt.bannerUrl;
+          }
 
           if (resolvedCover && resolvedCover !== existing.coverUrl) {
             existing.coverUrl = resolvedCover;
@@ -1738,27 +1821,47 @@ ipcMain.handle('import-backup', async () => {
           }
 
           // 4. Metadata: description, summary, genres, developer, publisher
-          if (
-            b.description &&
-            typeof b.description === 'string' &&
-            b.description.trim() &&
-            b.description !== existing.description
-          ) {
-            existing.description = b.description;
+          if (b.description && typeof b.description === 'string' && b.description.trim()) {
+            const isBDescGeneric = gameCategoryService.isGenericDescription(b.description, b.title);
+            const isExistingDescGeneric = !existing.description || gameCategoryService.isGenericDescription(existing.description, existing.title);
+            if (!isBDescGeneric) {
+              if (existing.description !== b.description) {
+                existing.description = b.description;
+                modified = true;
+              }
+            } else if (isExistingDescGeneric && knownArt?.description) {
+              existing.description = knownArt.description;
+              modified = true;
+            }
+          } else if ((!existing.description || gameCategoryService.isGenericDescription(existing.description, existing.title)) && knownArt?.description) {
+            existing.description = knownArt.description;
             modified = true;
           }
+
           if (b.summary && typeof b.summary === 'string' && b.summary.trim()) {
             existing.summary = b.summary;
             modified = true;
+          } else if (!existing.summary && knownArt?.description) {
+            existing.summary = knownArt.description;
+            modified = true;
           }
+
           if (Array.isArray(b.genres) && b.genres.length > 0 && (!existing.genres || existing.genres.length === 0)) {
             existing.genres = b.genres;
             modified = true;
+          } else if ((!existing.genres || existing.genres.length === 0) && knownArt?.genres) {
+            existing.genres = knownArt.genres;
+            modified = true;
           }
+
           if (b.developer && (!existing.developer || existing.developer === 'Unknown')) {
             existing.developer = b.developer;
             modified = true;
+          } else if ((!existing.developer || existing.developer === 'Unknown') && knownArt?.developer) {
+            existing.developer = knownArt.developer;
+            modified = true;
           }
+
           if (b.publisher && (!existing.publisher || existing.publisher === 'Independent')) {
             existing.publisher = b.publisher;
             modified = true;
@@ -1772,12 +1875,20 @@ ipcMain.handle('import-backup', async () => {
           // Skip if it is a manual or emulator game whose executable/ROM no longer exists on disk
           if (b.platform === 'manual' || b.platform === 'emulator') {
             if (!isExecutableAccessible(b.executablePath)) {
-              // Executable or ROM no longer exists at original path: skip item safely!
               continue;
             }
           }
 
-          // Build clean restored game object
+          let finalCover = resolveArtwork(b.coverUrl, b.coverBase64, b.platform, b.storeId, false);
+          let finalBanner = resolveArtwork(b.bannerUrl, b.bannerBase64, b.platform, b.storeId, true);
+          if (!finalCover && knownArt?.coverUrl) finalCover = knownArt.coverUrl;
+          if (!finalBanner && knownArt?.bannerUrl) finalBanner = knownArt.bannerUrl;
+
+          let desc = b.description || '';
+          if ((!desc || gameCategoryService.isGenericDescription(desc, b.title)) && knownArt?.description) {
+            desc = knownArt.description;
+          }
+
           const newGame: Game = {
             id: b.id || `game-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             title: b.title || 'Unknown Title',
@@ -1786,17 +1897,17 @@ ipcMain.handle('import-backup', async () => {
             launchArgs: b.launchArgs,
             installPath: b.installPath,
             installUrl: b.installUrl,
-            coverUrl: resolveBackupArtworkUrl(b.coverUrl),
-            bannerUrl: resolveBackupArtworkUrl(b.bannerUrl),
+            coverUrl: finalCover,
+            bannerUrl: finalBanner,
             iconUrl: resolveBackupArtworkUrl(b.iconUrl) || undefined,
             logoUrl: resolveBackupArtworkUrl(b.logoUrl) || undefined,
-            description: b.description || '',
-            summary: b.summary,
-            genres: Array.isArray(b.genres) ? b.genres : ['PC Game'],
+            description: desc,
+            summary: b.summary || (knownArt?.description ? knownArt.description : undefined),
+            genres: Array.isArray(b.genres) && b.genres.length > 0 ? b.genres : (knownArt?.genres || ['PC Game']),
             tags: Array.isArray(b.tags) ? b.tags : [],
-            developer: b.developer,
+            developer: b.developer || knownArt?.developer,
             publisher: b.publisher,
-            releaseDate: b.releaseDate,
+            releaseDate: b.releaseDate || knownArt?.releaseDate,
             rating: typeof b.rating === 'number' ? b.rating : undefined,
             favorite: Boolean(b.favorite),
             hidden: Boolean(b.hidden),
@@ -1816,44 +1927,98 @@ ipcMain.handle('import-backup', async () => {
 
     const finalGames = [...currentGames, ...newGamesToAdd];
 
-    // Background auto-recovery: for any manual/local games whose covers might have been in older cache folders,
-    // trigger auto artwork lookup so no game is left blank!
-    setTimeout(async () => {
-      try {
-        let bgModified = false;
-        const gList = store.getGames();
-        for (const g of gList) {
-          if (!g.coverUrl || g.coverUrl.startsWith('data:image/svg') || g.coverUrl.includes('placeholder')) {
-            const art = await lookupGameArtwork(g.title);
-            if (art && art.coverUrl) {
-              g.coverUrl = art.coverUrl;
-              if (art.bannerUrl && !g.bannerUrl) g.bannerUrl = art.bannerUrl;
-              if (art.description && (!g.description || g.description.startsWith('Game added to Aegis Hub:'))) {
-                g.description = art.description;
-              }
-              bgModified = true;
-            }
-          }
-        }
-        if (bgModified) {
-          store.saveGames(gList);
-          BrowserWindow.getAllWindows().forEach((win) => {
-            if (!win.isDestroyed()) win.webContents.send('games-updated', gList);
-          });
-        }
-      } catch (e) {
-        console.warn('Backup artwork auto-recovery background error:', e);
-      }
-    }, 1000);
-
-    if (updatedGamesCount > 0 || addedGamesCount > 0) {
-      store.saveGames(finalGames);
-      // Broadcast updated games to any open windows
-      const windows = BrowserWindow.getAllWindows();
-      for (const win of windows) {
+    // Always persist restored state and notify UI immediately
+    store.saveGames(finalGames);
+    const windows = BrowserWindow.getAllWindows();
+    for (const win of windows) {
+      if (!win.isDestroyed()) {
         win.webContents.send('games-updated', finalGames);
       }
     }
+
+    // Auto-recovery background worker: asynchronously fetch missing covers and descriptions for any local/emulator games
+    setImmediate(async () => {
+      try {
+        const gamesList = store.getGames();
+        let changed = false;
+        let batchCounter = 0;
+
+        for (const g of gamesList) {
+          const needsCover =
+            !g.coverUrl ||
+            g.coverUrl.trim() === '' ||
+            g.coverUrl.startsWith('data:image/svg') ||
+            g.coverUrl.includes('placeholder');
+          const needsDesc =
+            !g.description ||
+            g.description.trim() === '' ||
+            gameCategoryService.isGenericDescription(g.description, g.title);
+
+          if (!needsCover && !needsDesc) continue;
+
+          try {
+            const art = await lookupGameArtwork(g.title, g.platform === 'emulator' ? (g.storeId || 'emulator') : g.platform);
+            if (art) {
+              if (needsCover && art.coverUrl) {
+                g.coverUrl = art.coverUrl;
+                if (art.bannerUrl && (!g.bannerUrl || g.bannerUrl.startsWith('data:image/svg'))) {
+                  g.bannerUrl = art.bannerUrl;
+                }
+                changed = true;
+              }
+              if (needsDesc && art.description) {
+                g.description = art.description;
+                if (!g.summary) g.summary = art.description;
+                changed = true;
+              }
+              if (art.developer && (!g.developer || g.developer === 'Unknown')) {
+                g.developer = art.developer;
+                changed = true;
+              }
+              if (art.genres && (!g.genres || g.genres.length === 0 || g.genres[0] === 'PC Game')) {
+                g.genres = art.genres;
+                changed = true;
+              }
+            }
+
+            // If still missing description, try category service
+            if (!g.description || gameCategoryService.isGenericDescription(g.description, g.title)) {
+              const cat = await gameCategoryService.fetchCategoriesForGame({
+                title: g.title,
+                platform: g.platform,
+                storeId: g.storeId,
+              });
+              if (cat && (cat.description || cat.summary)) {
+                g.description = (cat.description || cat.summary)!;
+                if (!g.summary) g.summary = cat.summary || cat.description;
+                changed = true;
+              }
+            }
+
+            if (changed) {
+              batchCounter++;
+              if (batchCounter % 3 === 0) {
+                store.saveGames(gamesList);
+                BrowserWindow.getAllWindows().forEach((win) => {
+                  if (!win.isDestroyed()) win.webContents.send('games-updated', gamesList);
+                });
+              }
+            }
+          } catch (e) {
+            console.warn(`Auto-recovery error for game "${g.title}":`, e);
+          }
+        }
+
+        if (changed) {
+          store.saveGames(gamesList);
+          BrowserWindow.getAllWindows().forEach((win) => {
+            if (!win.isDestroyed()) win.webContents.send('games-updated', gamesList);
+          });
+        }
+      } catch (e) {
+        console.warn('Backup auto-recovery worker failed:', e);
+      }
+    });
 
     const currentSettings = store.getSettings();
     return {

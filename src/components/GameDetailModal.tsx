@@ -147,6 +147,9 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
       /Emulated title for/i,
       /Classic retro title/i,
       /Experience classic retro/i,
+      /^Found in /i,
+      /^Game added to Aegis Hub/i,
+      /^Game added to /i,
     ];
 
     const isActionAdvPlaceholder =
