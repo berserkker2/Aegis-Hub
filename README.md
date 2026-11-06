@@ -1,4 +1,4 @@
-# Nexus Launcher
+# Aegis Hub
 
 A modern, high-performance universal PC game launcher inspired by **GOG Galaxy** with dark mode visuals, seamless library management, automatic PC scanning, and multi-store integrations.
 
@@ -21,7 +21,7 @@ A modern, high-performance universal PC game launcher inspired by **GOG Galaxy**
 
 ### 2. 🛡️ Permanent Steam Solution (Zero Logout Issues)
 - **Why GOG Galaxy Fails**: Other launchers attempt to link Steam via web browser cookies or OAuth, which expire constantly and force you to re-login every few days.
-- **The Nexus Solution**: Nexus Launcher directly reads local Steam manifest files (`steamapps/appmanifest_<appid>.acf`) and launches games seamlessly via `steam://rungameid/<appid>`.
+- **The Aegis Solution**: Aegis Hub directly reads local Steam manifest files (`steamapps/appmanifest_<appid>.acf`) and launches games seamlessly via `steam://rungameid/<appid>`.
 - **Zero logins required**: Never disconnects, works 100% offline, and fetches official high-definition Steam box art automatically.
 
 ### 3. 🕹️ Store Integrations & Sources
@@ -61,7 +61,7 @@ A modern, high-performance universal PC game launcher inspired by **GOG Galaxy**
   - Tracks process start and exit times.
   - Automatically records and increments total minutes played.
   - Updates the "Last Played" timestamp and moves the game to the top of the *Recently Played* shelf.
-- Persistent local JSON database stored in user data directory (`nexus-library.json`).
+- Persistent local JSON database stored in user data directory (`games.json`).
 
 ---
 

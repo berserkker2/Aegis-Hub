@@ -39,6 +39,17 @@
   background: rgba(100, 116, 139, 1);
 }
 
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
 /* App drag regions for frameless titlebar */
 .app-drag-region {
   -webkit-app-region: drag;
@@ -47,3 +58,38 @@
 .no-drag {
   -webkit-app-region: no-drag;
 }
+
+/* Dark dropdown styles for native selects */
+select, option {
+  background-color: #0f172a;
+  color: #e2e8f0;
+  color-scheme: dark;
+}
+
+/* Custom view slider styles */
+input[type=range].view-slider {
+  -webkit-appearance: none;
+  background: #1e293b;
+}
+
+input[type=range].view-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 13px;
+  width: 13px;
+  border-radius: 9999px;
+  background: #3b82f6;
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.6);
+  border: 2px solid #ffffff;
+  transition: transform 0.1s ease;
+}
+
+input[type=range].view-slider:hover::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+
+input[type=range].view-slider.slider-violet::-webkit-slider-thumb {
+  background: #8b5cf6;
+  box-shadow: 0 0 6px rgba(139, 92, 246, 0.6);
+}
+

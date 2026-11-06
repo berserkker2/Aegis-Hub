@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { X, FolderOpen, Image, Save, Sparkles, Check } from 'lucide-react';
+import { X, FolderOpen, Image, Save, Sparkles, Check, Clock, Calendar } from 'lucide-react';
 import { Game, GamePlatform } from '../types/game';
+import { isoToDateInput, dateInputToIso, formatPlaytime } from '../utils/formatters';
 
 interface EditGameModalProps {
   game: Game | null;
@@ -19,8 +20,19 @@ export const EditGameModal: React.FC<EditGameModalProps> = ({ game, onClose, onS
   const [description, setDescription] = useState(game.description || '');
   const [genresInput, setGenresInput] = useState(game.genres?.join(', ') || '');
   const [developer, setDeveloper] = useState(game.developer || '');
+  const [publisher, setPublisher] = useState(game.publisher || '');
   const [favorite, setFavorite] = useState(game.favorite);
   const [installed, setInstalled] = useState(game.installed !== false);
+  const [hidden, setHidden] = useState(game.hidden || false);
+  const [playtimeHours, setPlaytimeHours] = useState<number>(() => {
+    const mins = Math.max(0, game.playtimeMinutes || 0);
+    return Math.floor(mins / 60);
+  });
+  const [playtimeMinutesPart, setPlaytimeMinutesPart] = useState<number>(() => {
+    const mins = Math.max(0, game.playtimeMinutes || 0);
+    return mins % 60;
+  });
+  const [lastPlayedDate, setLastPlayedDate] = useState<string>(() => isoToDateInput(game.lastPlayed));
   const [searchingArt, setSearchingArt] = useState(false);
   const [artFound, setArtFound] = useState(false);
 
@@ -35,6 +47,7 @@ export const EditGameModal: React.FC<EditGameModalProps> = ({ game, onClose, onS
         if (art.bannerUrl) setBannerUrl(art.bannerUrl);
         if (art.genres?.length) setGenresInput(art.genres.join(', '));
         if (art.developer) setDeveloper(art.developer);
+        if (art.publisher) setPublisher(art.publisher);
         setArtFound(true);
       }
     } catch (err) {
@@ -82,6 +95,9 @@ export const EditGameModal: React.FC<EditGameModalProps> = ({ game, onClose, onS
       .map((g) => g.trim())
       .filter(Boolean);
 
+    const totalPlaytimeMinutes = Math.max(0, (playtimeHours || 0) * 60 + (playtimeMinutesPart || 0));
+    const newLastPlayed = dateInputToIso(lastPlayedDate);
+
     onSave({
       ...game,
       title: title.trim(),
@@ -92,8 +108,12 @@ export const EditGameModal: React.FC<EditGameModalProps> = ({ game, onClose, onS
       description: description.trim(),
       genres,
       developer: developer.trim() || undefined,
+      publisher: publisher.trim() || undefined,
       favorite,
       installed,
+      hidden,
+      playtimeMinutes: totalPlaytimeMinutes,
+      lastPlayed: newLastPlayed,
     });
     onClose();
   };
@@ -234,7 +254,7 @@ export const EditGameModal: React.FC<EditGameModalProps> = ({ game, onClose, onS
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1">Platform</label>
               <select
@@ -242,7 +262,7 @@ export const EditGameModal: React.FC<EditGameModalProps> = ({ game, onClose, onS
                 onChange={(e) => setPlatform(e.target.value as GamePlatform)}
                 className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-lg px-3 py-2 text-xs text-slate-100 outline-none"
               >
-                <option value="manual">PC Standalone</option>
+                <option value="manual">Local</option>
                 <option value="steam">Steam</option>
                 <option value="epic">Epic Games</option>
                 <option value="gog">GOG Galaxy</option>
@@ -258,19 +278,168 @@ export const EditGameModal: React.FC<EditGameModalProps> = ({ game, onClose, onS
                 type="text"
                 value={developer}
                 onChange={(e) => setDeveloper(e.target.value)}
+                placeholder="e.g. Remedy Entertainment"
+                className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-lg px-3 py-2 text-xs text-slate-100 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Publisher</label>
+              <input
+                type="text"
+                value={publisher}
+                onChange={(e) => setPublisher(e.target.value)}
+                placeholder="e.g. Epic Games Publishing"
                 className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-lg px-3 py-2 text-xs text-slate-100 outline-none"
               />
             </div>
           </div>
 
+          {/* Playtime & Last Played Activity */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-xl bg-slate-950/60 border border-slate-800">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Time Played</span>
+                </label>
+                <span className="text-[11px] font-mono text-blue-400">
+                  {formatPlaytime(Math.max(0, (playtimeHours || 0) * 60 + (playtimeMinutesPart || 0)))}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <div className="text-[10px] text-slate-400 mb-0.5">Hours</div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={playtimeHours}
+                    onChange={(e) => setPlaytimeHours(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    className="w-full bg-slate-900 border border-slate-800 focus:border-blue-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 font-mono outline-none"
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-400 mb-0.5">Minutes</div>
+                  <input
+                    type="number"
+                    min="0"
+                    max="59"
+                    step="1"
+                    value={playtimeMinutesPart}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10) || 0;
+                      setPlaytimeMinutesPart(Math.max(0, Math.min(59, val)));
+                    }}
+                    className="w-full bg-slate-900 border border-slate-800 focus:border-blue-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 font-mono outline-none"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Last Played</span>
+                </label>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = new Date();
+                      const y = d.getFullYear();
+                      const m = String(d.getMonth() + 1).padStart(2, '0');
+                      const day = String(d.getDate()).padStart(2, '0');
+                      setLastPlayedDate(`${y}-${m}-${day}`);
+                    }}
+                    className="text-[10px] text-purple-400 hover:text-purple-300 underline cursor-pointer"
+                  >
+                    Today
+                  </button>
+                  <span className="text-[10px] text-slate-600">|</span>
+                  <button
+                    type="button"
+                    onClick={() => setLastPlayedDate('')}
+                    className="text-[10px] text-slate-500 hover:text-red-400 underline cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-400 mb-0.5">Date</div>
+                <input
+                  type="date"
+                  value={lastPlayedDate}
+                  onChange={(e) => setLastPlayedDate(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 focus:border-purple-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 outline-none [color-scheme:dark]"
+                />
+              </div>
+            </div>
+          </div>
+
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Genres</label>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">
+              Genres (separated by comma)
+            </label>
             <input
               type="text"
               value={genresInput}
               onChange={(e) => setGenresInput(e.target.value)}
+              placeholder="e.g. Survival Horror, Action, Sci-Fi"
               className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-lg px-3 py-2 text-xs text-slate-100 outline-none"
             />
+            <div className="flex flex-wrap gap-1 mt-2">
+              {[
+                'Survival Horror',
+                'Horror',
+                'Action-Adventure',
+                'Stealth',
+                'Action',
+                'Adventure',
+                'Souls-like',
+                'Metroidvania',
+                'RPG',
+                'FPS',
+                'Open World',
+                'Sci-Fi',
+                'Story Rich',
+              ].map((pg) => {
+                const isSelected = genresInput
+                  .toLowerCase()
+                  .split(',')
+                  .map((g) => g.trim())
+                  .includes(pg.toLowerCase());
+                return (
+                  <button
+                    key={pg}
+                    type="button"
+                    onClick={() => {
+                      const current = genresInput
+                        .split(',')
+                        .map((g) => g.trim())
+                        .filter(Boolean);
+                      const exists = current.some((g) => g.toLowerCase() === pg.toLowerCase());
+                      const next = exists
+                        ? current.filter((g) => g.toLowerCase() !== pg.toLowerCase())
+                        : [...current, pg];
+                      setGenresInput(next.join(', '));
+                    }}
+                    className={`px-2 py-0.5 rounded text-[11px] font-medium transition cursor-pointer ${
+                      isSelected
+                        ? 'bg-blue-600/30 text-blue-300 border border-blue-500/50'
+                        : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                    }`}
+                  >
+                    {isSelected ? '✓ ' : '+ '}
+                    {pg}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div>
@@ -283,7 +452,7 @@ export const EditGameModal: React.FC<EditGameModalProps> = ({ game, onClose, onS
             />
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center gap-6">
             <label className="flex items-center gap-2 text-xs text-slate-300 font-medium cursor-pointer">
               <input
                 type="checkbox"
@@ -302,6 +471,16 @@ export const EditGameModal: React.FC<EditGameModalProps> = ({ game, onClose, onS
                 className="rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0"
               />
               <span>Installed locally on this PC</span>
+            </label>
+
+            <label className="flex items-center gap-2 text-xs text-amber-300 font-medium cursor-pointer">
+              <input
+                type="checkbox"
+                checked={hidden}
+                onChange={(e) => setHidden(e.target.checked)}
+                className="rounded bg-slate-950 border-slate-700 text-amber-500 focus:ring-0"
+              />
+              <span>Hide from library & Recent shelf</span>
             </label>
           </div>
 

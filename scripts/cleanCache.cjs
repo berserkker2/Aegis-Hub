@@ -5,12 +5,12 @@ const appDataDir = process.env.APPDATA
   ? path.join(process.env.APPDATA, 'game-launcher')
   : path.join(__dirname, '..', '.launcher-data');
 
-console.log('Clearing Nexus Launcher cache and data directory:', appDataDir);
+console.log('Clearing Aegis Hub cache and data directory:', appDataDir);
 
 if (fs.existsSync(appDataDir)) {
   try {
     fs.rmSync(appDataDir, { recursive: true, force: true });
-    console.log('✅ Nexus Launcher cache and library database wiped clean successfully!');
+    console.log('✅ Aegis Hub cache and library database wiped clean successfully!');
   } catch (err) {
     console.error('⚠️ Could not remove all files (files may be in use):', err.message);
   }

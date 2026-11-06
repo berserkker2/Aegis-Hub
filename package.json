@@ -1,12 +1,19 @@
 {
   "name": "game-launcher",
-  "version": "1.0.0",
+  "version": "1.0.0-b06112026",
   "description": "",
   "main": "dist-electron/main.js",
   "scripts": {
     "build:electron": "esbuild electron/main.ts --bundle --platform=node --target=node20 --outfile=dist-electron/main.js --external:electron && esbuild electron/preload.ts --bundle --platform=node --target=node20 --outfile=dist-electron/preload.js --external:electron",
     "build:vite": "vite build",
     "build": "npm run build:vite && npm run build:electron",
+    "dist": "node scripts/run-build.cjs",
+    "dist:portable": "node scripts/run-build.cjs --win portable",
+    "dist:installer": "node scripts/run-build.cjs --win nsis",
+    "release": "node scripts/run-build.cjs --publish",
+    "release:installer": "node scripts/run-build.cjs --win nsis --publish",
+    "release:portable": "node scripts/run-build.cjs --win portable --publish",
+    "dist:dir": "node scripts/run-build.cjs --dir",
     "dev:vite": "vite",
     "dev:electron": "wait-on tcp:5173 && npm run build:electron && cross-env NODE_ENV=development electron .",
     "dev": "concurrently -k -r \"npm run dev:vite\" \"npm run dev:electron\"",
@@ -34,6 +41,7 @@
     "concurrently": "^10.0.6",
     "cross-env": "^10.1.0",
     "electron": "^44.7.0",
+    "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
     "postcss": "^8.5.29",
     "tailwindcss": "^4.3.3",
@@ -41,5 +49,44 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
     "wait-on": "^9.5.1"
+  },
+  "build": {
+    "appId": "com.aegishub.launcher",
+    "productName": "Aegis Hub",
+    "publish": {
+      "provider": "github",
+      "owner": "berserkker2",
+      "repo": "Aegis-Hub"
+    },
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "electron/assets/**/*",
+      "logos/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Aegis Hub",
+      "artifactName": "${productName}-Setup-${env.APP_VERSION}.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${env.APP_VERSION}.${ext}",
+      "requestExecutionLevel": "user"
+    }
   }
 }

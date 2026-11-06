@@ -25,19 +25,23 @@ export async function scanEpicGames(): Promise<ScanResult[]> {
         const installLoc = manifest.InstallLocation;
         const launchExe = manifest.LaunchExecutable;
         const appName = manifest.AppName;
+        const namespace = manifest.CatalogNamespace || '';
+        const catalogItemId = manifest.CatalogItemId || '';
 
         if (title && installLoc) {
           const fullExePath = launchExe ? path.join(installLoc, launchExe) : installLoc;
           const art = (await lookupGameArtwork(title)) || generateDistinctArtwork(title);
 
+          const launchUri = (namespace && catalogItemId)
+            ? `com.epicgames.launcher://apps/${encodeURIComponent(namespace)}%3A${encodeURIComponent(catalogItemId)}%3A${encodeURIComponent(appName)}?action=launch&silent=true`
+            : `com.epicgames.launcher://apps/${appName}?action=launch&silent=true`;
+
           results.push({
             title,
-            executablePath: fs.existsSync(fullExePath)
-              ? fullExePath
-              : `com.epicgames.launcher://apps/${appName}?action=launch&silent=true`,
+            executablePath: launchUri,
             platform: 'epic',
             installPath: installLoc,
-            storeId: appName,
+            storeId: catalogItemId || appName,
             coverUrl: art.coverUrl,
             bannerUrl: art.bannerUrl,
             description: `Installed via Epic Games Launcher in ${installLoc}`,

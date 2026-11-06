@@ -4,6 +4,10 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { Game, GamePlatform, StoreAccount } from '../../src/types/game';
+import { galaxyDbService } from './galaxyDbService';
+import { epicDirectService } from './epicDirectService';
+import { ubisoftDirectService } from './ubisoftDirectService';
+import { eaDirectService } from './eaDirectService';
 
 export interface LocalDetectedAccount {
   platform: GamePlatform;
@@ -39,12 +43,76 @@ export class StoreAuthManager {
             platform: 'steam',
             displayName: personaName,
             accountIdentifier: steamId64,
-            details: `Logged in on this PC as @${accountName} (SteamID: ${steamId64})`,
+            details: `PC Steam account @${accountName} (SteamID: ${steamId64})`,
             avatarUrl: 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg',
           });
         }
       } catch (err) {
         console.error('Error reading Steam loginusers.vdf:', err);
+      }
+    }
+
+    // 1.5. Detect Direct Epic Account if authenticated
+    if (epicDirectService.hasSavedTokens()) {
+      const epicTokens = epicDirectService.getSavedTokens();
+      if (epicTokens) {
+        detected.push({
+          platform: 'epic',
+          displayName: epicTokens.displayName || 'Epic Gamer',
+          accountIdentifier: epicTokens.accountId,
+          details: `Direct Epic Games account (@${epicTokens.displayName}) - API connected`,
+          avatarUrl: 'https://static-assets-prod.epicgames.com/epic-store/static/favicon.ico',
+        });
+      }
+    }
+
+    // 2. Detect Multi-Store Accounts from Galaxy DB (Epic, Ubisoft, EA, GOG)
+    if (galaxyDbService.isAvailable()) {
+      const externalAccounts = galaxyDbService.getConnectedAccounts();
+      for (const ext of externalAccounts) {
+        if (ext.platform === 'steam' && detected.some(d => d.platform === 'steam')) {
+          // Already added from local Steam
+          continue;
+        }
+        if (ext.platform === 'epic' && detected.some(d => d.platform === 'epic')) {
+          // Already added from direct Epic
+          continue;
+        }
+
+        const count = galaxyDbService.getCloudGames(ext.platform).length;
+        let avatarUrl = 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=100&q=80';
+        let storeLabel = ext.platform.toUpperCase();
+
+        if (ext.platform === 'epic') {
+          avatarUrl = 'https://static-assets-prod.epicgames.com/epic-store/static/favicon.ico';
+          storeLabel = 'Epic Games';
+        } else if (ext.platform === 'ubisoft') {
+          avatarUrl = 'https://ubisoftconnect.com/favicon.ico';
+          storeLabel = 'Ubisoft Connect';
+        } else if (ext.platform === 'ea') {
+          avatarUrl = 'https://media.contentapi.ea.com/content/dam/ea/common/ea-app-favicon.png';
+          storeLabel = 'EA App';
+        }
+
+        detected.push({
+          platform: ext.platform,
+          displayName: ext.accountName,
+          accountIdentifier: ext.accountName,
+          details: `${storeLabel} linked account (@${ext.accountName}) - ${count} cloud games ready`,
+          avatarUrl,
+        });
+      }
+
+      // Check GOG itself
+      const gogGamesCount = galaxyDbService.getCloudGames('gog').length;
+      if (gogGamesCount > 0 && !detected.some(d => d.platform === 'gog')) {
+        detected.push({
+          platform: 'gog',
+          displayName: 'GOG Galaxy Library',
+          accountIdentifier: 'GOG Account',
+          details: `GOG DRM-Free library - ${gogGamesCount} cloud games ready`,
+          avatarUrl: 'https://www.gog.com/favicon.ico',
+        });
       }
     }
 
@@ -247,75 +315,85 @@ export class StoreAuthManager {
           }
         });
       } else if (platform === 'epic') {
-        const epicLoginUrl = 'https://www.epicgames.com/id/login';
-        authWindow.loadURL(epicLoginUrl);
-
-        authWindow.webContents.on('did-navigate', async (_event, url) => {
-          if (
-            url.includes('epicgames.com/account') ||
-            url.includes('store.epicgames.com') ||
-            url.includes('epicgames.com/id/api/redirect')
-          ) {
-            // Logged in!
-            const cookies = await authSession.cookies.get({ domain: 'epicgames.com' });
-            let displayName = 'Epic Explorer';
-            const nameCookie = cookies.find((c) => c.name === 'EPIC_NAME' || c.name === 'displayName');
-            if (nameCookie) displayName = decodeURIComponent(nameCookie.value);
-
-            const games: Game[] = [
-              {
-                id: 'epic-cloud-fortnite',
-                title: 'Fortnite',
-                executablePath: 'com.epicgames.launcher://apps/Fortnite?action=launch',
-                installUrl: 'com.epicgames.launcher://apps/Fortnite?action=install',
-                platform: 'epic',
-                storeId: 'Fortnite',
-                coverUrl: 'https://images.unsplash.com/photo-1589241062272-c0a000072dfa?auto=format&fit=crop&w=600&q=80',
-                bannerUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1920&q=80',
-                description: 'Owned on your Epic Games Store account.',
-                genres: ['Battle Royale', 'Action'],
-                tags: ['Epic Cloud'],
-                favorite: false,
-                hidden: false,
-                installed: false,
-                playtimeMinutes: 0,
-                addedDate: new Date().toISOString(),
-              },
-              {
-                id: 'epic-cloud-alan-wake-2',
-                title: 'Alan Wake 2',
-                executablePath: '',
-                installUrl: 'com.epicgames.launcher://apps/AlanWake2?action=install',
-                platform: 'epic',
-                storeId: 'AlanWake2',
-                coverUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=600&q=80',
-                bannerUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1920&q=80',
-                description: 'Owned on your Epic Games Store account.',
-                genres: ['Horror', 'Action'],
-                tags: ['Epic Cloud'],
-                favorite: true,
-                hidden: false,
-                installed: false,
-                playtimeMinutes: 0,
-                addedDate: new Date().toISOString(),
-              },
-            ];
-
+        epicDirectService
+          .authenticateWithWindow(authWindow, authSession)
+          .then(({ tokens, games }) => {
             const account: StoreAccount = {
               platform: 'epic',
               name: 'Epic Games Store',
               connected: true,
-              accountIdentifier: displayName,
+              accountIdentifier: tokens.displayName,
               totalOwnedGames: games.length,
               lastSynced: new Date().toISOString(),
-              description: `Authenticated with Epic Games.`,
+              description: 'Directly authenticated via Epic Games API.',
               authType: 'oauth_token',
               color: '#2a2a2a',
             };
-
             finishSuccess(account, games);
-          }
-        });
+          })
+          .catch((err) => {
+            if (!completed) {
+              completed = true;
+              try {
+                if (!authWindow.isDestroyed()) authWindow.close();
+              } catch {}
+              reject(err);
+            }
+          });
+      } else if (platform === 'ubisoft') {
+        ubisoftDirectService
+          .authenticateWithWindow(authWindow, authSession)
+          .then(({ tokens, games }) => {
+            const account: StoreAccount = {
+              platform: 'ubisoft',
+              name: 'Ubisoft Connect',
+              connected: true,
+              accountIdentifier: tokens.username,
+              totalOwnedGames: games.length,
+              lastSynced: new Date().toISOString(),
+              description: 'Directly authenticated via Ubisoft Connect API.',
+              authType: 'oauth_token',
+              color: '#0070d6',
+              needsReauth: false,
+            };
+            finishSuccess(account, games);
+          })
+          .catch((err) => {
+            if (!completed) {
+              completed = true;
+              try {
+                if (!authWindow.isDestroyed()) authWindow.close();
+              } catch {}
+              reject(err);
+            }
+          });
+      } else if (platform === 'ea') {
+        eaDirectService
+          .authenticateWithWindow(authWindow, authSession)
+          .then(({ tokens, games }) => {
+            const account: StoreAccount = {
+              platform: 'ea',
+              name: 'EA App',
+              connected: true,
+              accountIdentifier: tokens.personaName || 'EA User',
+              totalOwnedGames: games.length,
+              lastSynced: new Date().toISOString(),
+              description: 'Directly authenticated via EA App API.',
+              authType: 'oauth_token',
+              color: '#f05a28',
+              needsReauth: false,
+            };
+            finishSuccess(account, games);
+          })
+          .catch((err) => {
+            if (!completed) {
+              completed = true;
+              try {
+                if (!authWindow.isDestroyed()) authWindow.close();
+              } catch {}
+              reject(err);
+            }
+          });
       }
     });
   }
@@ -345,7 +423,7 @@ export class StoreAuthManager {
   private fetchSimple(url: string): Promise<string> {
     return new Promise((resolve, reject) => {
       const client = url.startsWith('https') ? https : http;
-      const req = client.get(url, { headers: { 'User-Agent': 'NexusLauncher/1.0' } }, (res) => {
+      const req = client.get(url, { headers: { 'User-Agent': 'AegisHub/1.0' } }, (res) => {
         let body = '';
         res.on('data', (c) => (body += c));
         res.on('end', () => resolve(body));

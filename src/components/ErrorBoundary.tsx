@@ -21,7 +21,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Nexus Launcher Error caught by boundary:', error, errorInfo);
+    console.error('Aegis Hub Error caught by boundary:', error, errorInfo);
   }
 
   public render() {

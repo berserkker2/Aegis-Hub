@@ -4,11 +4,16 @@ import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
 import { Game, StoreAccount, GamePlatform } from '../../src/types/game';
+import { galaxyDbService } from './galaxyDbService';
+import { epicDirectService } from './epicDirectService';
+import { steamOwnedService } from './steamOwnedService';
+import { ubisoftDirectService } from './ubisoftDirectService';
+import { eaDirectService } from './eaDirectService';
 
 function fetchHttp(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https') ? https : http;
-    const req = client.get(url, { headers: { 'User-Agent': 'NexusGameLauncher/1.0' } }, (res) => {
+    const req = client.get(url, { headers: { 'User-Agent': 'AegisHub/1.0' } }, (res) => {
       // Follow redirects
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         return resolve(fetchHttp(res.headers.location));
@@ -47,13 +52,13 @@ export class StoreAccountService {
       console.error('Error loading store accounts:', err);
     }
 
-    return [
+    const defaultAccounts: StoreAccount[] = [
       {
         platform: 'steam',
         name: 'Steam',
         connected: false,
         totalOwnedGames: 0,
-        description: 'Permanent Steam connection via Steam ID/Profile. 100% login-free, eliminates session expiration.',
+        description: 'Permanent Steam connection. Syncs your entire Steam cloud library with artwork and playtime.',
         authType: 'steam_id',
         color: '#1b2838',
       },
@@ -62,7 +67,7 @@ export class StoreAccountService {
         name: 'Epic Games Store',
         connected: false,
         totalOwnedGames: 0,
-        description: 'Connect Epic Games account to sync your uninstalled cloud games & free weekly titles.',
+        description: 'Sync your Epic Games Store titles including weekly free claims.',
         authType: 'oauth_token',
         color: '#2a2a2a',
       },
@@ -76,6 +81,15 @@ export class StoreAccountService {
         color: '#6c2b96',
       },
       {
+        platform: 'ubisoft',
+        name: 'Ubisoft Connect',
+        connected: false,
+        totalOwnedGames: 0,
+        description: 'Sync owned Ubisoft Connect titles.',
+        authType: 'credentials',
+        color: '#0070d6',
+      },
+      {
         platform: 'ea',
         name: 'EA App',
         connected: false,
@@ -84,16 +98,89 @@ export class StoreAccountService {
         authType: 'credentials',
         color: '#f05a28',
       },
-      {
-        platform: 'ubisoft',
-        name: 'Ubisoft Connect',
-        connected: false,
-        totalOwnedGames: 0,
-        description: 'Sync owned Ubisoft Connect & Assassin\'s Creed / Far Cry titles.',
-        authType: 'credentials',
-        color: '#0070d6',
-      },
     ];
+
+    // If local multi-store database is found, populate accounts with real counts
+    if (galaxyDbService.isAvailable()) {
+      const connected = galaxyDbService.getConnectedAccounts();
+      for (const conn of connected) {
+        const acc = defaultAccounts.find((a) => a.platform === conn.platform);
+        if (acc) {
+          acc.connected = true;
+          acc.accountIdentifier = conn.accountName;
+          const games = galaxyDbService.getCloudGames(conn.platform);
+          acc.totalOwnedGames = games.length;
+          acc.lastSynced = new Date().toISOString();
+        }
+      }
+
+      // Check GOG itself
+      const gogAcc = defaultAccounts.find((a) => a.platform === 'gog');
+      if (gogAcc) {
+        const gogGames = galaxyDbService.getCloudGames('gog');
+        if (gogGames.length > 0) {
+          gogAcc.connected = true;
+          gogAcc.accountIdentifier = 'GOG User';
+          gogAcc.totalOwnedGames = gogGames.length;
+          gogAcc.lastSynced = new Date().toISOString();
+        }
+      }
+    }
+
+    // Override Steam status if local Steam installation has games
+    try {
+      const steamGames = steamOwnedService.getOwnedSteamGames();
+      const steamAcc = defaultAccounts.find((a) => a.platform === 'steam');
+      if (steamAcc && steamGames.length > 0) {
+        steamAcc.connected = true;
+        steamAcc.accountIdentifier = 'Steam User';
+        steamAcc.totalOwnedGames = steamGames.length;
+        steamAcc.description = 'Synced directly from local Steam library.';
+      }
+    } catch {}
+
+    // Override Epic status if directly authenticated via API
+    if (epicDirectService.hasSavedTokens()) {
+      const epicTokens = epicDirectService.getSavedTokens();
+      const epicAcc = defaultAccounts.find((a) => a.platform === 'epic');
+      if (epicAcc && epicTokens) {
+        epicAcc.connected = true;
+        epicAcc.accountIdentifier = epicTokens.displayName || 'Epic Gamer';
+        epicAcc.description = 'Directly authenticated with Epic Games API.';
+      }
+    }
+
+    // Check Ubisoft direct status & token expiration
+    if (ubisoftDirectService.hasSavedTokens()) {
+      const ubiTokens = ubisoftDirectService.getSavedTokens();
+      const ubiAcc = defaultAccounts.find((a) => a.platform === 'ubisoft');
+      if (ubiAcc && ubiTokens) {
+        ubiAcc.connected = true;
+        ubiAcc.accountIdentifier = ubiTokens.username;
+        const expired = ubisoftDirectService.isTokenExpired();
+        ubiAcc.needsReauth = expired;
+        ubiAcc.description = expired
+          ? 'Session token expired. Re-authentication required.'
+          : 'Directly authenticated with Ubisoft Connect API.';
+      }
+    }
+
+    // Check EA direct status & token expiration
+    if (eaDirectService.hasSavedTokens()) {
+      const eaTokens = eaDirectService.getSavedTokens();
+      const eaAcc = defaultAccounts.find((a) => a.platform === 'ea');
+      if (eaAcc && eaTokens) {
+        eaAcc.connected = true;
+        eaAcc.accountIdentifier = eaTokens.personaName || 'EA User';
+        const expired = eaDirectService.isTokenExpired();
+        eaAcc.needsReauth = expired;
+        eaAcc.description = expired
+          ? 'Session token expired. Re-authentication required.'
+          : 'Directly authenticated with EA App API.';
+      }
+    }
+
+    return defaultAccounts;
   }
 
   public saveAccounts(accounts: StoreAccount[]): void {
@@ -105,18 +192,37 @@ export class StoreAccountService {
   }
 
   /**
-   * Syncs uninstalled games for a Steam account using Steam Community XML/JSON
-   * No session cookies needed - will NEVER expire!
+   * Syncs uninstalled games for a Steam account
    */
   public async syncSteamAccount(identifier: string, apiKey?: string): Promise<{ account: StoreAccount; games: Game[] }> {
     const cleanId = identifier.trim().replace(/^https?:\/\/steamcommunity\.com\/(id|profiles)\//, '').replace(/\/$/, '');
     let games: Game[] = [];
     let profileName = cleanId;
-    let avatarUrl = '';
+    let avatarUrl = 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg';
 
+    // 1. First priority: Direct local Steam installation scanner (scans appinfo.vdf, userdata, librarycache)
     try {
-      // 1. If API Key is provided, use official IPlayerService
-      if (apiKey && /^\d{17}$/.test(cleanId)) {
+      const directSteamGames = steamOwnedService.getOwnedSteamGames();
+      if (directSteamGames.length > 0) {
+        games = directSteamGames;
+        profileName = 'Berserkker (Steam)';
+      }
+    } catch (err: any) {
+      console.warn('Direct Steam scan warning:', err.message);
+    }
+
+    // 2. Fallback: Check local multi-store cache (GOG Galaxy DB)
+    if (games.length === 0 && galaxyDbService.isAvailable()) {
+      const dbGames = galaxyDbService.getCloudGames('steam');
+      if (dbGames.length > 0) {
+        games = dbGames;
+        profileName = 'Berserkker (Steam)';
+      }
+    }
+
+    // 2. If no games from DB, try Steam API key if provided
+    if (games.length === 0 && apiKey && /^\d{17}$/.test(cleanId)) {
+      try {
         const url = `https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${cleanId}&format=json&include_appinfo=1&include_played_free_games=1`;
         const res = await fetchHttp(url);
         const json = JSON.parse(res);
@@ -137,30 +243,32 @@ export class StoreAccountService {
               tags: ['Steam Cloud', 'Owned'],
               favorite: false,
               hidden: false,
-              installed: false, // Default uninstalled unless local manifest found
+              installed: false,
               playtimeMinutes: item.playtime_forever || 0,
               addedDate: new Date().toISOString(),
             });
           }
         }
-      } else {
-        // 2. Fetch public community profile XML
+      } catch (err: any) {
+        console.warn('Steam API sync warning:', err.message);
+      }
+    }
+
+    // 3. If still empty, try public profile XML
+    if (games.length === 0) {
+      try {
         const isNumeric = /^\d{17}$/.test(cleanId);
         const profileUrl = isNumeric
           ? `https://steamcommunity.com/profiles/${cleanId}/games?tab=all&xml=1`
           : `https://steamcommunity.com/id/${cleanId}/games?tab=all&xml=1`;
 
         const xml = await fetchHttp(profileUrl);
-
-        // Extract steamID
         const nameMatch = xml.match(/<steamID><!\[CDATA\[(.*?)\]\]><\/steamID>/) || xml.match(/<steamID>(.*?)<\/steamID>/);
         if (nameMatch) profileName = nameMatch[1];
 
-        // Extract custom avatar
         const avatarMatch = xml.match(/<avatarMedium><!\[CDATA\[(.*?)\]\]><\/avatarMedium>/) || xml.match(/<avatarMedium>(.*?)<\/avatarMedium>/);
         if (avatarMatch) avatarUrl = avatarMatch[1];
 
-        // Parse games from XML
         const gameBlocks = xml.split('<game>');
         for (let i = 1; i < gameBlocks.length; i++) {
           const block = gameBlocks[i];
@@ -193,13 +301,14 @@ export class StoreAccountService {
             });
           }
         }
+      } catch (err: any) {
+        console.warn('Steam Community sync warning:', err.message);
       }
-    } catch (err: any) {
-      console.warn('Steam Community sync warning:', err.message);
-      // If profile is private or restricted, populate with demo popular owned Steam library
-      if (games.length === 0) {
-        games = getFallbackSteamCloudGames();
-      }
+    }
+
+    // 4. Fallback if profile is private or offline
+    if (games.length === 0) {
+      games = getFallbackSteamCloudGames();
     }
 
     const updatedAccount: StoreAccount = {
@@ -207,7 +316,7 @@ export class StoreAccountService {
       name: 'Steam',
       connected: true,
       accountIdentifier: profileName,
-      avatarUrl: avatarUrl || 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_medium.jpg',
+      avatarUrl,
       totalOwnedGames: games.length,
       lastSynced: new Date().toISOString(),
       description: 'Connected via Steam ID. Never logs out!',
@@ -222,62 +331,15 @@ export class StoreAccountService {
    * Syncs GOG Cloud Account library
    */
   public async syncGogAccount(accountIdentifier: string): Promise<{ account: StoreAccount; games: Game[] }> {
-    const games: Game[] = [
-      {
-        id: 'gog-cyberpunk-2077',
-        title: 'Cyberpunk 2077',
-        executablePath: '',
-        installUrl: 'goggalaxy://openStoreGame/1097894769',
-        platform: 'gog',
-        storeId: '1097894769',
-        coverUrl: 'https://images.unsplash.com/photo-1563089145-599997674d42?auto=format&fit=crop&w=600&q=80',
-        bannerUrl: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=1920&q=80',
-        description: 'Owned on GOG Galaxy account. DRM-Free edition.',
-        genres: ['RPG', 'Action', 'Open World'],
-        tags: ['GOG Cloud', 'DRM-Free'],
-        favorite: true,
-        hidden: false,
-        installed: false,
-        playtimeMinutes: 180,
-        addedDate: new Date().toISOString(),
-      },
-      {
-        id: 'gog-witcher-3',
-        title: 'The Witcher 3: Wild Hunt',
-        executablePath: '',
-        installUrl: 'goggalaxy://openStoreGame/1207664643',
-        platform: 'gog',
-        storeId: '1207664643',
-        coverUrl: 'https://images.unsplash.com/photo-1579373903781-fd5c0c30c4cd?auto=format&fit=crop&w=600&q=80',
-        bannerUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1920&q=80',
-        description: 'Owned on GOG Galaxy account. DRM-Free edition.',
-        genres: ['RPG', 'Open World', 'Fantasy'],
-        tags: ['GOG Cloud', 'DRM-Free'],
-        favorite: true,
-        hidden: false,
-        installed: false,
-        playtimeMinutes: 4200,
-        addedDate: new Date().toISOString(),
-      },
-      {
-        id: 'gog-divinity-original-sin-2',
-        title: 'Divinity: Original Sin 2 - Definitive Edition',
-        executablePath: '',
-        installUrl: 'goggalaxy://openStoreGame/1495134320',
-        platform: 'gog',
-        storeId: '1495134320',
-        coverUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/435150/library_600x900.jpg',
-        bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/435150/library_hero.jpg',
-        description: 'The eagerly anticipated sequel to the award-winning RPG. DRM-Free on GOG.',
-        genres: ['RPG', 'Tactical', 'Turn-Based'],
-        tags: ['GOG Cloud', 'Story Rich'],
-        favorite: false,
-        hidden: false,
-        installed: false,
-        playtimeMinutes: 240,
-        addedDate: new Date().toISOString(),
-      },
-    ];
+    let games: Game[] = [];
+
+    if (galaxyDbService.isAvailable()) {
+      games = galaxyDbService.getCloudGames('gog');
+    }
+
+    if (games.length === 0) {
+      games = getFallbackGogGames();
+    }
 
     const account: StoreAccount = {
       platform: 'gog',
@@ -298,71 +360,39 @@ export class StoreAccountService {
    * Syncs Epic Games Store Cloud library
    */
   public async syncEpicAccount(accountIdentifier: string): Promise<{ account: StoreAccount; games: Game[] }> {
-    const games: Game[] = [
-      {
-        id: 'epic-fortnite',
-        title: 'Fortnite',
-        executablePath: 'com.epicgames.launcher://apps/Fortnite?action=launch',
-        installUrl: 'com.epicgames.launcher://apps/Fortnite?action=install',
-        platform: 'epic',
-        storeId: 'Fortnite',
-        coverUrl: 'https://images.unsplash.com/photo-1589241062272-c0a000072dfa?auto=format&fit=crop&w=600&q=80',
-        bannerUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1920&q=80',
-        description: 'Epic Games Store cloud library.',
-        genres: ['Battle Royale', 'Action'],
-        tags: ['Epic Cloud', 'Multiplayer'],
-        favorite: false,
-        hidden: false,
-        installed: false,
-        playtimeMinutes: 0,
-        addedDate: new Date().toISOString(),
-      },
-      {
-        id: 'epic-alan-wake-2',
-        title: 'Alan Wake 2',
-        executablePath: '',
-        installUrl: 'com.epicgames.launcher://apps/AlanWake2?action=install',
-        platform: 'epic',
-        storeId: 'AlanWake2',
-        coverUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=600&q=80',
-        bannerUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1920&q=80',
-        description: 'A psychological survival horror game by Remedy Entertainment.',
-        genres: ['Horror', 'Action', 'Adventure'],
-        tags: ['Epic Exclusive', 'Atmospheric'],
-        favorite: true,
-        hidden: false,
-        installed: false,
-        playtimeMinutes: 0,
-        addedDate: new Date().toISOString(),
-      },
-      {
-        id: 'epic-death-stranding',
-        title: 'Death Stranding Director\'s Cut',
-        executablePath: '',
-        installUrl: 'com.epicgames.launcher://apps/DeathStranding?action=install',
-        platform: 'epic',
-        storeId: 'DeathStranding',
-        coverUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1850570/library_600x900.jpg',
-        bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1850570/library_hero.jpg',
-        description: 'From legendary game creator Hideo Kojima comes a genre-defying experience.',
-        genres: ['Action', 'Open World', 'Sci-Fi'],
-        tags: ['Epic Cloud', 'Cinematic'],
-        favorite: false,
-        hidden: false,
-        installed: false,
-        playtimeMinutes: 0,
-        addedDate: new Date().toISOString(),
-      },
-    ];
+    let games: Game[] = [];
+    let displayName = accountIdentifier.trim() || 'Epic Gamer';
+
+    // 1. Direct Epic API connection if tokens exist
+    if (epicDirectService.hasSavedTokens()) {
+      try {
+        games = await epicDirectService.fetchOwnedGames();
+        const tokens = epicDirectService.getSavedTokens();
+        if (tokens?.displayName) displayName = tokens.displayName;
+      } catch (err: any) {
+        console.warn('Direct Epic API fetch failed, falling back:', err.message);
+      }
+    }
+
+    // 2. Fallback to Galaxy DB if direct not available or returned empty
+    if (games.length === 0 && galaxyDbService.isAvailable()) {
+      games = galaxyDbService.getCloudGames('epic');
+    }
+
+    if (games.length === 0) {
+      games = getFallbackEpicGames();
+    }
 
     const account: StoreAccount = {
       platform: 'epic',
       name: 'Epic Games Store',
       connected: true,
-      accountIdentifier: accountIdentifier.trim() || 'Epic Voyager',
+      accountIdentifier: displayName,
       totalOwnedGames: games.length,
       lastSynced: new Date().toISOString(),
-      description: 'Synced with Epic Games Store cloud library.',
+      description: epicDirectService.hasSavedTokens()
+        ? 'Directly synced with Epic Games API.'
+        : 'Synced with Epic Games Store cloud library.',
       authType: 'oauth_token',
       color: '#2a2a2a',
     };
@@ -374,55 +404,48 @@ export class StoreAccountService {
    * Syncs EA App Cloud library
    */
   public async syncEaAccount(accountIdentifier: string): Promise<{ account: StoreAccount; games: Game[] }> {
-    const games: Game[] = [
-      {
-        id: 'ea-apex-legends',
-        title: 'Apex Legends',
-        executablePath: '',
-        installUrl: 'origin2://game/launch?offerId=ApexLegends',
-        platform: 'ea',
-        storeId: 'ApexLegends',
-        coverUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1172470/library_600x900.jpg',
-        bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1172470/library_hero.jpg',
-        description: 'Master an ever-growing roster of legendary characters in this free-to-play battle royale shooter.',
-        genres: ['Battle Royale', 'FPS', 'Multiplayer'],
-        tags: ['EA Play', 'Action'],
-        favorite: false,
-        hidden: false,
-        installed: false,
-        playtimeMinutes: 120,
-        addedDate: new Date().toISOString(),
-      },
-      {
-        id: 'ea-star-wars-jedi-survivor',
-        title: 'Star Wars Jedi: Survivor',
-        executablePath: '',
-        installUrl: 'origin2://game/launch?offerId=JediSurvivor',
-        platform: 'ea',
-        storeId: 'JediSurvivor',
-        coverUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1774580/library_600x900.jpg',
-        bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1774580/library_hero.jpg',
-        description: 'The story of Cal Kestis continues in STAR WARS Jedi: Survivor.',
-        genres: ['Action', 'Adventure', 'Sci-Fi'],
-        tags: ['EA App', 'Singleplayer'],
-        favorite: true,
-        hidden: false,
-        installed: false,
-        playtimeMinutes: 0,
-        addedDate: new Date().toISOString(),
-      },
-    ];
+    let games: Game[] = [];
+    let needsReauth = false;
+    let description = 'Synced with EA App cloud account.';
+    let displayName = accountIdentifier.trim() || 'berserkkerino';
+
+    if (eaDirectService.hasSavedTokens()) {
+      try {
+        if (eaDirectService.isTokenExpired()) {
+          needsReauth = true;
+          description = 'Session token expired. Re-authentication required.';
+        } else {
+          games = await eaDirectService.fetchOwnedGames();
+          const tokens = eaDirectService.getSavedTokens();
+          if (tokens?.personaName) displayName = tokens.personaName;
+          description = 'Directly authenticated via EA App API.';
+        }
+      } catch (err: any) {
+        console.warn('Direct EA fetch error:', err.message);
+        needsReauth = true;
+        description = 'Session token expired. Re-authentication required.';
+      }
+    }
+
+    if (games.length === 0 && galaxyDbService.isAvailable()) {
+      games = galaxyDbService.getCloudGames('ea');
+    }
+
+    if (games.length === 0) {
+      games = getFallbackEaGames();
+    }
 
     const account: StoreAccount = {
       platform: 'ea',
       name: 'EA App',
       connected: true,
-      accountIdentifier: accountIdentifier.trim() || 'EA Pilot',
+      accountIdentifier: displayName,
       totalOwnedGames: games.length,
       lastSynced: new Date().toISOString(),
-      description: 'Synced with EA App cloud account.',
-      authType: 'credentials',
+      description,
+      authType: eaDirectService.hasSavedTokens() ? 'oauth_token' : 'credentials',
       color: '#f05a28',
+      needsReauth,
     };
 
     return { account, games };
@@ -432,60 +455,66 @@ export class StoreAccountService {
    * Syncs Ubisoft Connect Cloud library
    */
   public async syncUbisoftAccount(accountIdentifier: string): Promise<{ account: StoreAccount; games: Game[] }> {
-    const games: Game[] = [
-      {
-        id: 'ubi-ac-mirage',
-        title: 'Assassin\'s Creed Mirage',
-        executablePath: '',
-        installUrl: 'uplay://launch/6002',
-        platform: 'ubisoft',
-        storeId: '6002',
-        coverUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=600&q=80',
-        bannerUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1920&q=80',
-        description: 'Experience the story of Basim in ninth-century Baghdad.',
-        genres: ['Action', 'Adventure', 'Stealth'],
-        tags: ['Ubisoft Connect', 'Historical'],
-        favorite: false,
-        hidden: false,
-        installed: false,
-        playtimeMinutes: 0,
-        addedDate: new Date().toISOString(),
-      },
-      {
-        id: 'ubi-far-cry-6',
-        title: 'Far Cry 6',
-        executablePath: '',
-        installUrl: 'uplay://launch/5266',
-        platform: 'ubisoft',
-        storeId: '5266',
-        coverUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/2369390/library_600x900.jpg',
-        bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/2369390/library_hero.jpg',
-        description: 'Welcome to Yara, a tropical paradise frozen in time. As the dictator of Yara, Antón Castillo is intent on restoring his nation.',
-        genres: ['Action', 'FPS', 'Open World'],
-        tags: ['Ubisoft Connect', 'Co-op'],
-        favorite: false,
-        hidden: false,
-        installed: false,
-        playtimeMinutes: 0,
-        addedDate: new Date().toISOString(),
-      },
-    ];
+    let games: Game[] = [];
+    let needsReauth = false;
+    let description = 'Synced with Ubisoft Connect cloud library.';
+    let displayName = accountIdentifier.trim() || 'berserkker';
+
+    if (ubisoftDirectService.hasSavedTokens()) {
+      try {
+        if (ubisoftDirectService.isTokenExpired()) {
+          needsReauth = true;
+          description = 'Session token expired. Re-authentication required.';
+        } else {
+          games = await ubisoftDirectService.fetchOwnedGames();
+          const tokens = ubisoftDirectService.getSavedTokens();
+          if (tokens?.username) displayName = tokens.username;
+          description = 'Directly authenticated via Ubisoft Connect API.';
+        }
+      } catch (err: any) {
+        console.warn('Direct Ubisoft fetch error:', err.message);
+        needsReauth = true;
+        description = 'Session token expired. Re-authentication required.';
+      }
+    }
+
+    if (games.length === 0 && galaxyDbService.isAvailable()) {
+      games = galaxyDbService.getCloudGames('ubisoft');
+    }
+
+    if (games.length === 0) {
+      games = getFallbackUbisoftGames();
+    }
 
     const account: StoreAccount = {
       platform: 'ubisoft',
       name: 'Ubisoft Connect',
       connected: true,
-      accountIdentifier: accountIdentifier.trim() || 'Ubisoft Assassin',
+      accountIdentifier: displayName,
       totalOwnedGames: games.length,
       lastSynced: new Date().toISOString(),
-      description: 'Synced with Ubisoft Connect cloud library.',
-      authType: 'credentials',
+      description,
+      authType: ubisoftDirectService.hasSavedTokens() ? 'oauth_token' : 'credentials',
       color: '#0070d6',
+      needsReauth,
     };
 
     return { account, games };
   }
+
+  /**
+   * Syncs all cloud games from all stores at once
+   */
+  public async syncAllCloudStores(): Promise<{ games: Game[]; count: number }> {
+    if (galaxyDbService.isAvailable()) {
+      const allCloudGames = galaxyDbService.getCloudGames();
+      return { games: allCloudGames, count: allCloudGames.length };
+    }
+    return { games: [], count: 0 };
+  }
 }
+
+export const storeAccountService = new StoreAccountService();
 
 function getFallbackSteamCloudGames(): Game[] {
   return [
@@ -543,58 +572,96 @@ function getFallbackSteamCloudGames(): Game[] {
       playtimeMinutes: 6100,
       addedDate: new Date().toISOString(),
     },
+  ];
+}
+
+function getFallbackGogGames(): Game[] {
+  return [
     {
-      id: 'steam-2379780',
-      title: 'Balatro',
-      executablePath: 'steam://rungameid/2379780',
-      installUrl: 'steam://install/2379780',
-      platform: 'steam',
-      storeId: '2379780',
-      coverUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/2379780/library_600x900.jpg',
-      bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/2379780/library_hero.jpg',
-      description: 'The poker roguelike. Balatro is a hypnotically satisfying deckbuilder.',
-      genres: ['Roguelike', 'Deckbuilder', 'Strategy'],
-      tags: ['Steam Cloud', 'Addictive'],
-      favorite: false,
-      hidden: false,
-      installed: false,
-      playtimeMinutes: 2900,
-      addedDate: new Date().toISOString(),
-    },
-    {
-      id: 'steam-1145360',
-      title: 'Hades',
-      executablePath: 'steam://rungameid/1145360',
-      installUrl: 'steam://install/1145360',
-      platform: 'steam',
-      storeId: '1145360',
-      coverUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1145360/library_600x900.jpg',
-      bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1145360/library_hero.jpg',
-      description: 'Defy the god of the dead as you hack and slash out of the Underworld.',
-      genres: ['Roguelike', 'Action', 'Indie'],
-      tags: ['Steam Cloud', 'Great Soundtrack'],
-      favorite: false,
-      hidden: false,
-      installed: false,
-      playtimeMinutes: 1450,
-      addedDate: new Date().toISOString(),
-    },
-    {
-      id: 'steam-367520',
-      title: 'Hollow Knight',
-      executablePath: 'steam://rungameid/367520',
-      installUrl: 'steam://install/367520',
-      platform: 'steam',
-      storeId: '367520',
-      coverUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/367520/library_600x900.jpg',
-      bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/367520/library_hero.jpg',
-      description: 'Forge your own path in Hollow Knight! An epic action adventure through a vast ruined kingdom.',
-      genres: ['Metroidvania', 'Action', 'Indie'],
-      tags: ['Steam Cloud', 'Atmospheric'],
+      id: 'gog-witcher-3',
+      title: 'The Witcher 3: Wild Hunt',
+      executablePath: '',
+      installUrl: 'goggalaxy://openStoreGame/1207664643',
+      platform: 'gog',
+      storeId: '1207664643',
+      coverUrl: 'https://images.unsplash.com/photo-1579373903781-fd5c0c30c4cd?auto=format&fit=crop&w=600&q=80',
+      bannerUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1920&q=80',
+      description: 'Owned on GOG Galaxy account. DRM-Free edition.',
+      genres: ['RPG', 'Open World', 'Fantasy'],
+      tags: ['GOG Cloud', 'DRM-Free'],
       favorite: true,
       hidden: false,
       installed: false,
-      playtimeMinutes: 720,
+      playtimeMinutes: 4200,
+      addedDate: new Date().toISOString(),
+    },
+  ];
+}
+
+function getFallbackEpicGames(): Game[] {
+  return [
+    {
+      id: 'epic-death-stranding',
+      title: 'Death Stranding Director\'s Cut',
+      executablePath: '',
+      installUrl: 'com.epicgames.launcher://apps/DeathStranding?action=install',
+      platform: 'epic',
+      storeId: 'DeathStranding',
+      coverUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1850570/library_600x900.jpg',
+      bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1850570/library_hero.jpg',
+      description: 'From legendary game creator Hideo Kojima comes a genre-defying experience.',
+      genres: ['Action', 'Open World', 'Sci-Fi'],
+      tags: ['Epic Cloud', 'Cinematic'],
+      favorite: false,
+      hidden: false,
+      installed: false,
+      playtimeMinutes: 0,
+      addedDate: new Date().toISOString(),
+    },
+  ];
+}
+
+function getFallbackEaGames(): Game[] {
+  return [
+    {
+      id: 'ea-titanfall-2',
+      title: 'Titanfall 2',
+      executablePath: '',
+      installUrl: 'origin2://game/launch?offerIds=Titanfall2',
+      platform: 'ea',
+      storeId: 'Titanfall2',
+      coverUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1237970/library_600x900.jpg',
+      bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1237970/library_hero.jpg',
+      description: 'Respawn Entertainment gives you the most advanced titan technology.',
+      genres: ['FPS', 'Action', 'Sci-Fi'],
+      tags: ['EA App', 'Fast-Paced'],
+      favorite: true,
+      hidden: false,
+      installed: false,
+      playtimeMinutes: 450,
+      addedDate: new Date().toISOString(),
+    },
+  ];
+}
+
+function getFallbackUbisoftGames(): Game[] {
+  return [
+    {
+      id: 'ubi-rayman-legends',
+      title: 'Rayman Legends',
+      executablePath: '',
+      installUrl: 'uplay://launch/29e9dd0e-1921-4e7f-b614-a3b686499d87/0',
+      platform: 'ubisoft',
+      storeId: '29e9dd0e-1921-4e7f-b614-a3b686499d87',
+      coverUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/242550/library_600x900.jpg',
+      bannerUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/242550/library_hero.jpg',
+      description: 'Rayman, Globox, and the Teensies are off wandering through an enchanted forest.',
+      genres: ['Platformer', 'Co-op', 'Action'],
+      tags: ['Ubisoft Connect', 'Great Soundtrack'],
+      favorite: false,
+      hidden: false,
+      installed: false,
+      playtimeMinutes: 180,
       addedDate: new Date().toISOString(),
     },
   ];

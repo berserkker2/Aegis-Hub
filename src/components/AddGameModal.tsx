@@ -1,14 +1,25 @@
 import React, { useState } from 'react';
-import { X, FolderOpen, Image, Plus, Gamepad, Sparkles, Search, Check } from 'lucide-react';
-import { Game, GamePlatform } from '../types/game';
+import { X, FolderOpen, Image, Plus, Gamepad, Sparkles, Check, FolderSearch, CheckSquare, Square, RefreshCw } from 'lucide-react';
+import { Game, GamePlatform, ScanResult } from '../types/game';
 import { getPlaceholderCover, getPlaceholderBanner } from '../utils/formatters';
+import { GameImage } from './GameImage';
 
 interface AddGameModalProps {
   onClose: () => void;
   onAddGame: (game: Game) => void;
+  onImportBatchGames?: (games: Game[]) => void;
+  existingGames?: Game[];
 }
 
-export const AddGameModal: React.FC<AddGameModalProps> = ({ onClose, onAddGame }) => {
+export const AddGameModal: React.FC<AddGameModalProps> = ({
+  onClose,
+  onAddGame,
+  onImportBatchGames,
+  existingGames = [],
+}) => {
+  const [activeTab, setActiveTab] = useState<'single' | 'folder'>('single');
+
+  // Single game state
   const [title, setTitle] = useState('');
   const [executablePath, setExecutablePath] = useState('');
   const [platform, setPlatform] = useState<GamePlatform>('manual');
@@ -21,6 +32,13 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ onClose, onAddGame }
   const [isInstalled, setIsInstalled] = useState(true);
   const [searchingArt, setSearchingArt] = useState(false);
   const [artFound, setArtFound] = useState(false);
+
+  // Folder batch import state
+  const [selectedFolder, setSelectedFolder] = useState('');
+  const [folderScanning, setFolderScanning] = useState(false);
+  const [folderResults, setFolderResults] = useState<ScanResult[]>([]);
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
+  const [folderHasScanned, setFolderHasScanned] = useState(false);
 
   const handleBrowseExecutable = async () => {
     if (window.api?.selectFile) {
@@ -102,7 +120,7 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ onClose, onAddGame }
       platform,
       coverUrl: coverUrl.trim() || getPlaceholderCover(title),
       bannerUrl: bannerUrl.trim() || getPlaceholderBanner(title),
-      description: description.trim() || `Game added to Nexus Launcher: ${title}`,
+      description: description.trim() || `Game added to Aegis Hub: ${title}`,
       genres: genres.length > 0 ? genres : ['PC Game'],
       tags: ['Custom', platform],
       developer: developer.trim() || undefined,
@@ -117,6 +135,92 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ onClose, onAddGame }
     onClose();
   };
 
+  const handleBrowseFolderToScan = async () => {
+    if (!window.api?.selectFolder) return;
+    const folder = await window.api.selectFolder();
+    if (!folder) return;
+
+    setSelectedFolder(folder);
+    setFolderScanning(true);
+    setFolderHasScanned(false);
+    try {
+      if (window.api?.scanFolder) {
+        const results = await window.api.scanFolder(folder);
+        // Exclude games already in library
+        const existingExecs = new Set(existingGames.map((g) => g.executablePath.toLowerCase().trim()));
+        const existingTitles = new Set(existingGames.map((g) => g.title.toLowerCase().trim()));
+
+        const filtered = results.filter(
+          (r) =>
+            !existingExecs.has(r.executablePath.toLowerCase().trim()) &&
+            !existingTitles.has(r.title.toLowerCase().trim())
+        );
+
+        setFolderResults(filtered);
+        setSelectedIndices(new Set(filtered.map((_, i) => i)));
+        setFolderHasScanned(true);
+      }
+    } catch (err) {
+      console.error('Folder scan error:', err);
+    } finally {
+      setFolderScanning(false);
+    }
+  };
+
+  const toggleSelectAllFolder = () => {
+    if (selectedIndices.size === folderResults.length) {
+      setSelectedIndices(new Set());
+    } else {
+      setSelectedIndices(new Set(folderResults.map((_, i) => i)));
+    }
+  };
+
+  const toggleIndex = (index: number) => {
+    const updated = new Set(selectedIndices);
+    if (updated.has(index)) {
+      updated.delete(index);
+    } else {
+      updated.add(index);
+    }
+    setSelectedIndices(updated);
+  };
+
+  const handleImportFolderGames = () => {
+    const gamesToImport: Game[] = [];
+    selectedIndices.forEach((idx) => {
+      const item = folderResults[idx];
+      if (item) {
+        gamesToImport.push({
+          id: `manual-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          title: item.title,
+          executablePath: item.executablePath,
+          platform: 'manual',
+          installPath: item.installPath,
+          coverUrl: item.coverUrl || getPlaceholderCover(item.title),
+          bannerUrl: item.bannerUrl || getPlaceholderBanner(item.title),
+          description: item.description || `Added from folder: ${item.installPath || item.executablePath}`,
+          genres: item.genres || ['PC Game'],
+          tags: ['Custom', 'Folder Import'],
+          favorite: false,
+          hidden: false,
+          installed: true,
+          playtimeMinutes: 0,
+          addedDate: new Date().toISOString(),
+        });
+      }
+    });
+
+    if (gamesToImport.length > 0) {
+      if (onImportBatchGames) {
+        onImportBatchGames(gamesToImport);
+      } else {
+        // Fallback: add one by one
+        gamesToImport.forEach((g) => onAddGame(g));
+      }
+      onClose();
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
       <div className="relative w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 overflow-hidden my-auto max-h-[92vh] flex flex-col">
@@ -124,11 +228,11 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ onClose, onAddGame }
         <div className="flex items-center justify-between pb-4 border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center border border-blue-500/30">
-              <Gamepad className="w-4 h-4" />
+              {activeTab === 'single' ? <Gamepad className="w-4 h-4" /> : <FolderSearch className="w-4 h-4" />}
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">Add Game Manually</h2>
-              <p className="text-xs text-slate-400">Add an installed executable or cloud game</p>
+              <h2 className="text-base font-bold text-white">Add Games</h2>
+              <p className="text-xs text-slate-400">Add a single game or scan an entire folder of games</p>
             </div>
           </div>
           <button
@@ -139,8 +243,186 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ onClose, onAddGame }
           </button>
         </div>
 
-        {/* Scrollable Form Body */}
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4 overflow-y-auto flex-1 pr-1">
+        {/* Tab Switcher */}
+        <div className="flex items-center gap-2 pt-3 pb-1 border-b border-slate-800 shrink-0">
+          <button
+            type="button"
+            onClick={() => setActiveTab('single')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              activeTab === 'single'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+          >
+            <Gamepad className="w-3.5 h-3.5" />
+            <span>Single Game (.exe)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('folder')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              activeTab === 'folder'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+          >
+            <FolderSearch className="w-3.5 h-3.5" />
+            <span>Folder / Entire Directory</span>
+          </button>
+        </div>
+
+        {activeTab === 'folder' ? (
+          /* Entire Folder Import Tab */
+          <div className="mt-4 flex-1 flex flex-col min-h-0 overflow-hidden">
+            {/* Folder selection bar */}
+            <div className="space-y-2 pb-3 shrink-0 border-b border-slate-800">
+              <label className="block text-xs font-semibold text-slate-300">
+                Choose Games Folder or External Drive
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  placeholder="e.g. D:\Games, G:\Epic Games, C:\Games..."
+                  value={selectedFolder}
+                  className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={handleBrowseFolderToScan}
+                  disabled={folderScanning}
+                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shrink-0 shadow"
+                >
+                  <FolderOpen className="w-4 h-4" />
+                  <span>{selectedFolder ? 'Change Folder...' : 'Browse Folder...'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Folder Scan Results */}
+            <div className="flex-1 overflow-y-auto py-3 space-y-2 min-h-[220px]">
+              {folderScanning ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <RefreshCw className="w-8 h-8 text-blue-500 animate-spin mb-3" />
+                  <div className="text-sm font-semibold text-slate-200">Scanning directory recursively...</div>
+                  <div className="text-xs text-slate-400 mt-1 max-w-sm">
+                    Searching for game executables and matching covers in {selectedFolder}
+                  </div>
+                </div>
+              ) : !selectedFolder ? (
+                <div className="flex flex-col items-center justify-center py-14 text-center">
+                  <FolderSearch className="w-10 h-10 text-slate-600 mb-3" />
+                  <div className="text-sm font-semibold text-slate-300">No folder selected</div>
+                  <div className="text-xs text-slate-500 mt-1 max-w-xs">
+                    Click "Browse Folder..." to select a folder containing one or more games. All games inside will be detected automatically.
+                  </div>
+                </div>
+              ) : folderResults.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-14 text-center">
+                  <Check className="w-10 h-10 text-emerald-500 mb-3" />
+                  <div className="text-sm font-semibold text-slate-300">
+                    {folderHasScanned ? 'No new unimported games found' : 'Ready'}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1 max-w-xs">
+                    All games found in this directory are already in your library.
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between pb-1 text-xs text-slate-400">
+                    <span>Found {folderResults.length} new game(s)</span>
+                    <button
+                      type="button"
+                      onClick={toggleSelectAllFolder}
+                      className="text-blue-400 hover:text-blue-300 font-medium"
+                    >
+                      {selectedIndices.size === folderResults.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                  </div>
+                  {folderResults.map((result, idx) => {
+                    const isSelected = selectedIndices.has(idx);
+
+                    return (
+                      <div
+                        key={`${result.executablePath}-${idx}`}
+                        onClick={() => toggleIndex(idx)}
+                        className={`flex items-center justify-between p-2.5 rounded-xl border transition cursor-pointer ${
+                          isSelected
+                            ? 'bg-blue-950/30 border-blue-500/40 text-white'
+                            : 'bg-slate-950/50 border-slate-800 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <button
+                            type="button"
+                            className="text-blue-400 shrink-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleIndex(idx);
+                            }}
+                          >
+                            {isSelected ? (
+                              <CheckSquare className="w-4 h-4 fill-blue-600/20 text-blue-500" />
+                            ) : (
+                              <Square className="w-4 h-4 text-slate-600" />
+                            )}
+                          </button>
+
+                          <div className="w-9 h-12 rounded-md overflow-hidden bg-slate-900 border border-slate-800 shrink-0 relative">
+                            <GameImage
+                              src={result.coverUrl}
+                              alt={result.title}
+                              title={result.title}
+                              platform="manual"
+                              type="cover"
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-semibold truncate text-slate-100">
+                              {result.title}
+                            </div>
+                            <div className="text-[10px] text-slate-500 truncate font-mono mt-0.5">
+                              {result.executablePath}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+
+            {/* Folder Footer */}
+            <div className="flex items-center justify-between pt-3 border-t border-slate-800 shrink-0">
+              <div className="text-xs text-slate-400">
+                {selectedIndices.size} of {folderResults.length} selected
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleImportFolderGames}
+                  disabled={selectedIndices.size === 0}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-lg shadow-blue-600/30 flex items-center gap-1.5 transition disabled:opacity-40"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Import Selected ({selectedIndices.size})</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Scrollable Form Body */
+          <form onSubmit={handleSubmit} className="mt-4 space-y-4 overflow-y-auto flex-1 pr-1">
           {/* Game Title with Auto-Fetch Button */}
           <div>
             <div className="flex items-center justify-between mb-1">
@@ -277,7 +559,7 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ onClose, onAddGame }
                 onChange={(e) => setPlatform(e.target.value as GamePlatform)}
                 className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-lg px-3 py-2 text-xs text-slate-100 outline-none transition"
               >
-                <option value="manual">PC Standalone / DRM-Free</option>
+                <option value="manual">Local</option>
                 <option value="steam">Steam</option>
                 <option value="epic">Epic Games Store</option>
                 <option value="gog">GOG Galaxy</option>
@@ -352,6 +634,7 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({ onClose, onAddGame }
             </button>
           </div>
         </form>
+        )}
       </div>
     </div>
   );

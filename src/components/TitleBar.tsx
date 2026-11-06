@@ -1,24 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { Minus, Square, Copy, X, Gamepad2, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { Minus, Square, Copy, X, Search, Settings as SettingsIcon, Tv, Sparkles } from 'lucide-react';
+import aegisLogo from '../assets/logos/aegis_logo.webp';
 
 interface TitleBarProps {
   onSearchChange: (query: string) => void;
   searchQuery: string;
-  onOpenScanner: () => void;
-  onOpenStoreLinks: () => void;
+  onOpenSettings?: () => void;
+  onEnterBigPicture?: () => void;
 }
 
-export const TitleBar: React.FC<TitleBarProps> = ({
+export const TitleBar: React.FC<TitleBarProps> = React.memo(({
   onSearchChange,
   searchQuery,
-  onOpenScanner,
-  onOpenStoreLinks,
+  onOpenSettings,
+  onEnterBigPicture,
 }) => {
   const [isMaximized, setIsMaximized] = useState(false);
+  const [updateAvailableTag, setUpdateAvailableTag] = useState<string | null>(null);
 
   useEffect(() => {
     if (window.api?.isMaximized) {
       window.api.isMaximized().then(setIsMaximized);
+    }
+
+    // Check updates silently in background on startup
+    if (window.api?.checkForUpdates) {
+      window.api.checkForUpdates().then((res) => {
+        if (res?.hasUpdate && res.latestVersion) {
+          setUpdateAvailableTag(res.latestVersion);
+        }
+      }).catch(() => {});
     }
   }, []);
 
@@ -39,20 +50,15 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   };
 
   return (
-    <header className="app-drag-region h-11 bg-slate-950/80 backdrop-blur-md border-b border-slate-800/80 flex items-center justify-between px-3 z-50 select-none">
+    <header className="app-drag-region h-11 bg-slate-950 border-b border-slate-800/80 flex items-center justify-between px-3 z-50 select-none">
       {/* Brand Logo & Name */}
-      <div className="flex items-center gap-3 no-drag">
-        <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-blue-600 via-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20 ring-1 ring-white/10">
-          <Gamepad2 className="w-4 h-4 text-white" />
+      <div className="flex items-center gap-2.5 no-drag">
+        <div className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center shadow-lg shadow-blue-500/20 ring-1 ring-white/10 shrink-0 bg-slate-900/80">
+          <img src={aegisLogo} alt="Aegis Hub" className="w-full h-full object-contain p-0.5" />
         </div>
-        <div className="flex items-center gap-2">
-          <span className="font-extrabold tracking-wider text-sm bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-            NEXUS
-          </span>
-          <span className="text-[10px] font-semibold tracking-widest uppercase px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-            LAUNCHER
-          </span>
-        </div>
+        <span className="font-extrabold tracking-wider text-sm bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+          AEGIS HUB
+        </span>
       </div>
 
       {/* Global Search Bar */}
@@ -79,23 +85,41 @@ export const TitleBar: React.FC<TitleBarProps> = ({
 
       {/* Quick Actions & Window Controls */}
       <div className="flex items-center gap-2 no-drag">
-        <button
-          onClick={onOpenStoreLinks}
-          title="Linked Game Stores"
-          className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-slate-300 hover:text-white bg-slate-900/80 hover:bg-slate-800 rounded-md border border-slate-800 transition"
-        >
-          <SlidersHorizontal className="w-3.5 h-3.5 text-purple-400" />
-          <span className="hidden sm:inline font-medium">Store Links</span>
-        </button>
+        {updateAvailableTag && onOpenSettings && (
+          <button
+            onClick={onOpenSettings}
+            title={`Aegis Hub v${updateAvailableTag} is available! Click to update.`}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-emerald-300 hover:text-white bg-emerald-950/60 hover:bg-emerald-800/80 rounded-md border border-emerald-500/50 transition group shadow-sm animate-pulse"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
+            <span className="font-bold text-[11px]">Update v{updateAvailableTag}</span>
+          </button>
+        )}
 
-        <button
-          onClick={onOpenScanner}
-          title="Auto-scan PC for games"
-          className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-blue-300 hover:text-blue-100 bg-blue-500/10 hover:bg-blue-500/20 rounded-md border border-blue-500/30 transition"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
-          <span className="hidden sm:inline font-medium">Scan PC</span>
-        </button>
+        {onEnterBigPicture && (
+          <button
+            onClick={onEnterBigPicture}
+            title="Enter Big Picture Mode (F11 / Alt+Enter / Gamepad Guide or Start)"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-blue-300 hover:text-white bg-blue-600/20 hover:bg-blue-600/35 rounded-md border border-blue-500/35 transition group shadow-sm"
+          >
+            <Tv className="w-3.5 h-3.5 text-blue-400 group-hover:scale-110 transition-transform" />
+            <span className="hidden sm:inline font-bold">Big Picture</span>
+            <kbd className="hidden md:inline-flex text-[9px] font-mono px-1 py-0.5 bg-blue-900/60 text-blue-200 border border-blue-500/30 rounded ml-0.5">
+              F11
+            </kbd>
+          </button>
+        )}
+
+        {onOpenSettings && (
+          <button
+            onClick={onOpenSettings}
+            title="Launcher Settings & Tools"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-slate-300 hover:text-white bg-slate-900/80 hover:bg-slate-800 rounded-md border border-slate-800 transition group"
+          >
+            <SettingsIcon className="w-3.5 h-3.5 text-blue-400 group-hover:rotate-45 transition-transform duration-300" />
+            <span className="hidden sm:inline font-medium">Settings</span>
+          </button>
+        )}
 
         <div className="h-4 w-[1px] bg-slate-800 mx-1" />
 
@@ -126,4 +150,4 @@ export const TitleBar: React.FC<TitleBarProps> = ({
       </div>
     </header>
   );
-};
+});

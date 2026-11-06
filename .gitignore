@@ -1,6 +1,8 @@
+.env
 node_modules/
 dist/
 dist-electron/
+release/
 .launcher-data/
 *.log
 .DS_Store
