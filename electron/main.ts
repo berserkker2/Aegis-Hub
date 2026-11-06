@@ -1582,19 +1582,21 @@ ipcMain.handle('import-backup', async () => {
     }
 
     // 3. Helper validation functions to prevent broken paths & missing files
-    const isImageAccessible = (imgSrc?: string): boolean => {
-      if (!imgSrc || typeof imgSrc !== 'string') return false;
+    const resolveBackupArtworkUrl = (imgSrc?: string): string => {
+      if (!imgSrc || typeof imgSrc !== 'string') return '';
       const trimmed = imgSrc.trim();
-      if (!trimmed) return false;
-      // Web URLs or embedded Data URIs are accessible
+      if (!trimmed) return '';
+
+      // Web URLs or embedded Data URIs are directly accessible
       if (
         trimmed.startsWith('http://') ||
         trimmed.startsWith('https://') ||
         trimmed.startsWith('data:image/')
       ) {
-        return true;
+        return trimmed;
       }
-      // Check local file path (supports aegis-media://, nexus-media://, file://, or plain filesystem path)
+
+      // Check local file path
       try {
         let localPath = trimmed
           .replace(/^(?:aegis|nexus)-media:\/\/(?:local\/)?/i, '')
@@ -1603,10 +1605,40 @@ ipcMain.handle('import-backup', async () => {
         while (localPath.startsWith('/') || localPath.startsWith('\\')) {
           localPath = localPath.slice(1);
         }
-        return fs.existsSync(localPath);
+
+        // 1. Direct path check
+        if (fs.existsSync(localPath)) {
+          return `aegis-media:///${localPath.replace(/\\/g, '/')}`;
+        }
+
+        // 2. Migration check: if from dev folder (game-launcher) to prod (Aegis Hub) or vice-versa
+        const appUserData = app.getPath('userData');
+        const fileName = path.basename(localPath);
+        const isCover = localPath.includes('covers');
+        const subDir = isCover ? 'covers' : 'banners';
+        const migratedTarget = path.join(appUserData, 'media-cache', subDir, fileName);
+
+        if (fs.existsSync(migratedTarget)) {
+          return `aegis-media:///${migratedTarget.replace(/\\/g, '/')}`;
+        }
+
+        // If source file exists in older appdata path, copy it over to current userData
+        const altUserData = localPath.includes('game-launcher')
+          ? localPath.replace(/game-launcher/gi, 'Aegis Hub')
+          : localPath.replace(/Aegis Hub/gi, 'game-launcher');
+
+        if (fs.existsSync(altUserData)) {
+          try {
+            fs.mkdirSync(path.dirname(migratedTarget), { recursive: true });
+            fs.copyFileSync(altUserData, migratedTarget);
+            return `aegis-media:///${migratedTarget.replace(/\\/g, '/')}`;
+          } catch {}
+        }
       } catch {
-        return false;
+        // Fallback
       }
+
+      return '';
     };
 
     const isExecutableAccessible = (exePath?: string): boolean => {
@@ -1682,21 +1714,26 @@ ipcMain.handle('import-backup', async () => {
             modified = true;
           }
 
-          // 3. Covers & Banners (skip if local path was deleted or is missing)
-          if (b.coverUrl && isImageAccessible(b.coverUrl) && b.coverUrl !== existing.coverUrl) {
-            existing.coverUrl = b.coverUrl;
+          // 3. Covers & Banners
+          const resolvedCover = resolveBackupArtworkUrl(b.coverUrl);
+          const resolvedBanner = resolveBackupArtworkUrl(b.bannerUrl);
+          const resolvedIcon = resolveBackupArtworkUrl(b.iconUrl);
+          const resolvedLogo = resolveBackupArtworkUrl(b.logoUrl);
+
+          if (resolvedCover && resolvedCover !== existing.coverUrl) {
+            existing.coverUrl = resolvedCover;
             modified = true;
           }
-          if (b.bannerUrl && isImageAccessible(b.bannerUrl) && b.bannerUrl !== existing.bannerUrl) {
-            existing.bannerUrl = b.bannerUrl;
+          if (resolvedBanner && resolvedBanner !== existing.bannerUrl) {
+            existing.bannerUrl = resolvedBanner;
             modified = true;
           }
-          if (b.iconUrl && isImageAccessible(b.iconUrl) && b.iconUrl !== existing.iconUrl) {
-            existing.iconUrl = b.iconUrl;
+          if (resolvedIcon && resolvedIcon !== existing.iconUrl) {
+            existing.iconUrl = resolvedIcon;
             modified = true;
           }
-          if (b.logoUrl && isImageAccessible(b.logoUrl) && b.logoUrl !== existing.logoUrl) {
-            existing.logoUrl = b.logoUrl;
+          if (resolvedLogo && resolvedLogo !== existing.logoUrl) {
+            existing.logoUrl = resolvedLogo;
             modified = true;
           }
 
@@ -1704,7 +1741,8 @@ ipcMain.handle('import-backup', async () => {
           if (
             b.description &&
             typeof b.description === 'string' &&
-            b.description.trim().length > (existing.description || '').trim().length
+            b.description.trim() &&
+            b.description !== existing.description
           ) {
             existing.description = b.description;
             modified = true;
@@ -1748,10 +1786,10 @@ ipcMain.handle('import-backup', async () => {
             launchArgs: b.launchArgs,
             installPath: b.installPath,
             installUrl: b.installUrl,
-            coverUrl: isImageAccessible(b.coverUrl) ? b.coverUrl : '',
-            bannerUrl: isImageAccessible(b.bannerUrl) ? b.bannerUrl : '',
-            iconUrl: isImageAccessible(b.iconUrl) ? b.iconUrl : undefined,
-            logoUrl: isImageAccessible(b.logoUrl) ? b.logoUrl : undefined,
+            coverUrl: resolveBackupArtworkUrl(b.coverUrl),
+            bannerUrl: resolveBackupArtworkUrl(b.bannerUrl),
+            iconUrl: resolveBackupArtworkUrl(b.iconUrl) || undefined,
+            logoUrl: resolveBackupArtworkUrl(b.logoUrl) || undefined,
             description: b.description || '',
             summary: b.summary,
             genres: Array.isArray(b.genres) ? b.genres : ['PC Game'],
@@ -1777,6 +1815,37 @@ ipcMain.handle('import-backup', async () => {
     }
 
     const finalGames = [...currentGames, ...newGamesToAdd];
+
+    // Background auto-recovery: for any manual/local games whose covers might have been in older cache folders,
+    // trigger auto artwork lookup so no game is left blank!
+    setTimeout(async () => {
+      try {
+        let bgModified = false;
+        const gList = store.getGames();
+        for (const g of gList) {
+          if (!g.coverUrl || g.coverUrl.startsWith('data:image/svg') || g.coverUrl.includes('placeholder')) {
+            const art = await lookupGameArtwork(g.title);
+            if (art && art.coverUrl) {
+              g.coverUrl = art.coverUrl;
+              if (art.bannerUrl && !g.bannerUrl) g.bannerUrl = art.bannerUrl;
+              if (art.description && (!g.description || g.description.startsWith('Game added to Aegis Hub:'))) {
+                g.description = art.description;
+              }
+              bgModified = true;
+            }
+          }
+        }
+        if (bgModified) {
+          store.saveGames(gList);
+          BrowserWindow.getAllWindows().forEach((win) => {
+            if (!win.isDestroyed()) win.webContents.send('games-updated', gList);
+          });
+        }
+      } catch (e) {
+        console.warn('Backup artwork auto-recovery background error:', e);
+      }
+    }, 1000);
+
     if (updatedGamesCount > 0 || addedGamesCount > 0) {
       store.saveGames(finalGames);
       // Broadcast updated games to any open windows
