@@ -1,6 +1,6 @@
 {
   "name": "game-launcher",
-  "version": "1.0.0-b06112026-4",
+  "version": "1.0.0-b06112026-5",
   "description": "",
   "main": "dist-electron/main.js",
   "scripts": {
