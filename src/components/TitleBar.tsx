@@ -6,6 +6,7 @@ interface TitleBarProps {
   onSearchChange: (query: string) => void;
   searchQuery: string;
   onOpenSettings?: () => void;
+  onOpenUpdateSettings?: () => void;
   onEnterBigPicture?: () => void;
 }
 
@@ -13,6 +14,7 @@ export const TitleBar: React.FC<TitleBarProps> = React.memo(({
   onSearchChange,
   searchQuery,
   onOpenSettings,
+  onOpenUpdateSettings,
   onEnterBigPicture,
 }) => {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -93,11 +95,11 @@ export const TitleBar: React.FC<TitleBarProps> = React.memo(({
 
       {/* Quick Actions & Window Controls */}
       <div className="flex items-center gap-2 no-drag">
-        {updateAvailableTag && onOpenSettings && (
+        {updateAvailableTag && (onOpenUpdateSettings || onOpenSettings) && (
           <button
-            onClick={onOpenSettings}
+            onClick={onOpenUpdateSettings || onOpenSettings}
             title={`Aegis Hub v${updateAvailableTag} is available! Click to update.`}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-emerald-300 hover:text-white bg-emerald-950/60 hover:bg-emerald-800/80 rounded-md border border-emerald-500/50 transition group shadow-sm animate-pulse"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-emerald-300 hover:text-white bg-emerald-950/60 hover:bg-emerald-800/80 rounded-md border border-emerald-500/50 transition group shadow-sm animate-pulse cursor-pointer"
           >
             <Sparkles className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
             <span className="font-bold text-[11px]">Update v{updateAvailableTag}</span>

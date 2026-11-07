@@ -6,17 +6,35 @@ export const SettingsWindow: React.FC = () => {
   const [settings, setSettings] = useState<LauncherSettings | null>(null);
   const [emulators, setEmulators] = useState<EmulatorConfig[]>([]);
   const [hiddenGamesCount, setHiddenGamesCount] = useState<number>(0);
-  const [activeTab, setActiveTab] = useState<'defaults' | 'stores' | 'tools' | 'emulation' | 'apps' | 'about'>('defaults');
+  const [activeTab, setActiveTab] = useState<'defaults' | 'stores' | 'tools' | 'emulation' | 'apps' | 'about'>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab');
+    if (tabParam === 'about-update') return 'about';
+    if (tabParam && ['defaults', 'stores', 'tools', 'emulation', 'apps', 'about'].includes(tabParam)) {
+      return tabParam as any;
+    }
+    return 'defaults';
+  });
+  const [autoStartUpdate, setAutoStartUpdate] = useState<boolean>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('tab') === 'about-update';
+  });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');
-    if (tabParam && ['defaults', 'stores', 'tools', 'emulation', 'apps', 'about'].includes(tabParam)) {
+    if (tabParam === 'about-update') {
+      setActiveTab('about');
+      setAutoStartUpdate(true);
+    } else if (tabParam && ['defaults', 'stores', 'tools', 'emulation', 'apps', 'about'].includes(tabParam)) {
       setActiveTab(tabParam as any);
     }
 
     const unsubTab = window.api?.onSetSettingsTab?.((tab) => {
-      if (['defaults', 'stores', 'tools', 'emulation', 'apps', 'about'].includes(tab)) {
+      if (tab === 'about-update') {
+        setActiveTab('about');
+        setAutoStartUpdate(true);
+      } else if (['defaults', 'stores', 'tools', 'emulation', 'apps', 'about'].includes(tab)) {
         setActiveTab(tab as any);
       }
     });
@@ -102,6 +120,7 @@ export const SettingsWindow: React.FC = () => {
       onSaveSettings={handleSaveSettings}
       onClose={handleClose}
       initialTab={activeTab}
+      autoStartUpdate={autoStartUpdate}
       emulators={emulators}
       hiddenGamesCount={hiddenGamesCount}
       onUpdateEmulator={handleUpdateEmulator}

@@ -521,18 +521,23 @@ export const App: React.FC = () => {
     if (window.api?.openSettingsWindow && !isBigPictureMode) {
       window.api.openSettingsWindow('defaults');
     } else {
+      setSettingsInitialTab('defaults');
       setIsSettingsModalOpen(true);
     }
   }, [isBigPictureMode]);
 
-  const handleOpenSettingsTab = useCallback((tab: 'defaults' | 'stores' | 'tools' | 'emulation' | 'apps' | 'about') => {
+  const handleOpenSettingsTab = useCallback((tab: 'defaults' | 'stores' | 'tools' | 'emulation' | 'apps' | 'about' | 'about-update') => {
     if (window.api?.openSettingsWindow && !isBigPictureMode) {
       window.api.openSettingsWindow(tab);
     } else {
-      setSettingsInitialTab(tab);
+      setSettingsInitialTab(tab === 'about-update' ? 'about' : tab);
       setIsSettingsModalOpen(true);
     }
   }, [isBigPictureMode]);
+
+  const handleOpenUpdateSettings = useCallback(() => {
+    handleOpenSettingsTab('about-update');
+  }, [handleOpenSettingsTab]);
 
   const handleSaveEdit = async (updatedGame: Game) => {
     if (updatedGame.id.startsWith('discovery-')) {
@@ -947,6 +952,7 @@ export const App: React.FC = () => {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onOpenSettings={handleOpenSettingsModal}
+        onOpenUpdateSettings={handleOpenUpdateSettings}
         onEnterBigPicture={handleEnterBigPicture}
       />
 

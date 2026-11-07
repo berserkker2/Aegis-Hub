@@ -448,6 +448,12 @@ function openSettingsWindow(initialTab?: string) {
     }
   });
 
+  settingsWindow.webContents.on('did-finish-load', () => {
+    if (initialTab) {
+      settingsWindow?.webContents.send('set-settings-tab', initialTab);
+    }
+  });
+
   settingsWindow.webContents.on('context-menu', (_event, params) => {
     if (params.selectionText && params.selectionText.trim().length > 0) {
       const menu = Menu.buildFromTemplate([
@@ -1380,16 +1386,18 @@ ipcMain.handle('check-for-updates', async () => {
   return updaterService.checkForUpdates();
 });
 
-ipcMain.handle('download-update', async (event, args: { downloadUrl: string; fileName: string }) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
+ipcMain.handle('download-update', async (_event, args: { downloadUrl: string; fileName: string }) => {
   return updaterService.downloadUpdate(args.downloadUrl, args.fileName, (progress) => {
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('update-download-progress', progress);
-    }
+    BrowserWindow.getAllWindows().forEach((win) => {
+      if (!win.isDestroyed()) {
+        win.webContents.send('update-download-progress', progress);
+      }
+    });
   });
 });
 
 ipcMain.handle('install-update', async (_event, installerPath?: string) => {
+  isQuitting = true;
   return updaterService.installAndRestart(installerPath);
 });
 

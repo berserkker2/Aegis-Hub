@@ -73,6 +73,7 @@ interface SettingsModalProps {
   onUpdateEmulator?: (updated: EmulatorConfig) => void;
   onDeleteEmulator?: (emulatorId: string) => void;
   initialTab?: 'defaults' | 'stores' | 'tools' | 'emulation' | 'apps' | 'about';
+  autoStartUpdate?: boolean;
   isWindow?: boolean;
 }
 
@@ -99,6 +100,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onUpdateEmulator,
   onDeleteEmulator,
   initialTab = 'defaults',
+  autoStartUpdate = false,
   isWindow = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'defaults' | 'stores' | 'tools' | 'emulation' | 'apps' | 'about'>(initialTab);
@@ -123,22 +125,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [isReadyToInstall, setIsReadyToInstall] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
 
-  const checkForAppUpdates = async () => {
-    if (!window.api?.checkForUpdates) return;
-    setIsCheckingUpdate(true);
-    setUpdateError(null);
-    try {
-      const res = await window.api.checkForUpdates();
-      setUpdateInfo(res);
-    } catch (err: any) {
-      setUpdateError(err?.message || 'Error checking for updates');
-    } finally {
-      setIsCheckingUpdate(false);
-    }
-  };
-
-  const startDownloadUpdate = async () => {
-    if (!updateInfo?.downloadUrl || !window.api?.downloadUpdate) return;
+  const startDownloadUpdate = async (infoOverride?: typeof updateInfo) => {
+    const targetInfo = infoOverride && 'downloadUrl' in infoOverride ? infoOverride : updateInfo;
+    if (!targetInfo?.downloadUrl || !window.api?.downloadUpdate || isDownloadingUpdate) return;
     setIsDownloadingUpdate(true);
     setDownloadProgress(0);
     setUpdateError(null);
@@ -149,8 +138,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
     try {
       const res = await window.api.downloadUpdate(
-        updateInfo.downloadUrl,
-        updateInfo.fileName || `AegisHub-Setup-${updateInfo.latestVersion}.exe`
+        targetInfo.downloadUrl,
+        targetInfo.fileName || `AegisHub-Setup-${targetInfo.latestVersion}.exe`
       );
       if (res.success) {
         setIsReadyToInstall(true);
@@ -165,20 +154,68 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  const checkForAppUpdates = async (autoDownload = false) => {
+    if (!window.api?.checkForUpdates) return;
+    setIsCheckingUpdate(true);
+    setUpdateError(null);
+    try {
+      const res = await window.api.checkForUpdates();
+      setUpdateInfo(res);
+      if (autoDownload && res?.hasUpdate && res?.downloadUrl) {
+        startDownloadUpdate(res);
+      }
+    } catch (err: any) {
+      setUpdateError(err?.message || 'Error checking for updates');
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
   const handleInstallNow = async () => {
     if (!window.api?.installUpdate) return;
     try {
-      await window.api.installUpdate();
+      const res = await window.api.installUpdate();
+      if (res && res.success === false) {
+        setUpdateError(res.error || 'Failed to launch installer');
+      }
     } catch (err: any) {
       setUpdateError(err?.message || 'Failed to launch installer');
     }
   };
 
   useEffect(() => {
-    if (activeTab === 'about' && !updateInfo && !isCheckingUpdate) {
-      checkForAppUpdates();
+    if (initialTab) {
+      setActiveTab(initialTab);
     }
-  }, [activeTab]);
+  }, [initialTab]);
+
+  useEffect(() => {
+    const unsub = window.api?.onSetSettingsTab?.((tab) => {
+      if (tab === 'about-update') {
+        setActiveTab('about');
+        checkForAppUpdates(true);
+      } else if (['defaults', 'stores', 'tools', 'emulation', 'apps', 'about'].includes(tab)) {
+        setActiveTab(tab as any);
+      }
+    });
+    return () => {
+      if (unsub) unsub();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'about' && !updateInfo && !isCheckingUpdate) {
+      checkForAppUpdates(Boolean(autoStartUpdate));
+    } else if (
+      activeTab === 'about' &&
+      autoStartUpdate &&
+      updateInfo?.hasUpdate &&
+      !isDownloadingUpdate &&
+      !isReadyToInstall
+    ) {
+      startDownloadUpdate(updateInfo);
+    }
+  }, [activeTab, autoStartUpdate]);
 
   useEffect(() => {
     if (isWindow && window.api?.isMaximized) {
@@ -1208,7 +1245,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="shrink-0 flex flex-col items-center md:items-end gap-2">
                   <button
                     type="button"
-                    onClick={checkForAppUpdates}
+                    onClick={() => checkForAppUpdates(false)}
                     disabled={isCheckingUpdate || isDownloadingUpdate}
                     className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-blue-600/20 cursor-pointer"
                   >
@@ -1254,9 +1291,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           {!isReadyToInstall ? (
                             <button
                               type="button"
-                              onClick={startDownloadUpdate}
+                              onClick={() => startDownloadUpdate()}
                               disabled={isDownloadingUpdate || !updateInfo.downloadUrl}
-                              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-emerald-600/20"
+                              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer"
                             >
                               <Download className={`w-3.5 h-3.5 ${isDownloadingUpdate ? 'animate-bounce' : ''}`} />
                               <span>{isDownloadingUpdate ? `Downloading ${downloadProgress}%` : 'Update Now (1-Click)'}</span>

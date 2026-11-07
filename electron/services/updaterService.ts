@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { app, shell } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
@@ -193,7 +193,14 @@ class UpdaterService {
     try {
       this.isDownloading = true;
       const tempDir = app.getPath('temp');
-      const targetFilePath = path.join(tempDir, fileName || `AegisHub-Update-${Date.now()}.exe`);
+      let targetFilePath = path.join(tempDir, fileName || `AegisHub-Update-${Date.now()}.exe`);
+      if (fs.existsSync(targetFilePath)) {
+        try {
+          fs.unlinkSync(targetFilePath);
+        } catch {
+          targetFilePath = path.join(tempDir, `AegisHub-Update-${Date.now()}.exe`);
+        }
+      }
 
       const res = await fetch(downloadUrl, {
         headers: { 'User-Agent': 'AegisHub-Updater/1.0' },
@@ -265,17 +272,25 @@ class UpdaterService {
 
     try {
       console.log('[Updater] Spawning installer and quitting app:', target);
-      // Launch installer detached so it continues after app exits
-      spawn(target, [], {
+      // Launch installer detached without shell:true so Windows CreateProcess handles paths with spaces cleanly
+      const child = spawn(target, [], {
         detached: true,
         stdio: 'ignore',
-        shell: true,
-      }).unref();
+        windowsHide: false,
+      });
+      child.on('error', (err) => {
+        console.error('[Updater] Spawn error, falling back to shell.openPath:', err);
+        shell.openPath(target).catch(console.error);
+      });
+      child.unref();
 
-      // Exit launcher cleanly
+      // Exit launcher cleanly so the installer can overwrite the app files
       setTimeout(() => {
         app.quit();
-      }, 500);
+        setTimeout(() => {
+          app.exit(0);
+        }, 400);
+      }, 400);
 
       return { success: true };
     } catch (err: any) {
