@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { Game, PulseData, PulseGiveaway, PulseDeal, PulseNewsItem, UserAchievement } from '../types/game';
 import { RecentlyPlayedShelf } from './RecentlyPlayedShelf';
-import { toLocalDateStr } from '../utils/formatters';
+import { toLocalDateStr, formatPlaytime } from '../utils/formatters';
 import steamLogo from '../assets/logos/steam.webp';
 import epicLogo from '../assets/logos/epic.webp';
 import gogLogo from '../assets/logos/gog.webp';
@@ -437,11 +437,7 @@ export const PulseView: React.FC<PulseViewProps> = ({
       const dayMins = dailyActivity[dateStr] || 0;
       weekTotalMins += dayMins;
 
-      const formattedTime = dayMins === 0
-        ? '0m'
-        : dayMins < 60
-        ? `${dayMins}m`
-        : `${(dayMins / 60).toFixed(1)}h`;
+      const formattedTime = dayMins === 0 ? '0m' : formatPlaytime(dayMins);
 
       days.push({
         dayName,
@@ -499,16 +495,13 @@ export const PulseView: React.FC<PulseViewProps> = ({
       }
     }
 
-    const tHours = (totalMins / 60).toFixed(1);
     const weeklyTimeDisplay = weeklyDaysData.weekTotalMins === 0
       ? '0m'
-      : weeklyDaysData.weekTotalMins < 60
-      ? `${weeklyDaysData.weekTotalMins}m`
-      : `${(weeklyDaysData.weekTotalMins / 60).toFixed(1)}h`;
+      : formatPlaytime(weeklyDaysData.weekTotalMins);
 
-    const totalTimeDisplay = totalMins < 60
-      ? `${totalMins}m`
-      : `${tHours}h`;
+    const totalTimeDisplay = totalMins === 0
+      ? '0m'
+      : formatPlaytime(totalMins);
 
     return {
       totalHours: totalTimeDisplay,
@@ -773,9 +766,7 @@ export const PulseView: React.FC<PulseViewProps> = ({
             {mostPlayedGames.length > 0 ? (
               <div className="grid grid-cols-3 gap-2 my-auto">
                 {mostPlayedGames.map((game, idx) => {
-                  const hours = (game.playtimeMinutes || 0) >= 60
-                    ? `${Math.round((game.playtimeMinutes || 0) / 60)}h`
-                    : `${game.playtimeMinutes || 0}m`;
+                  const hours = formatPlaytime(game.playtimeMinutes || 0);
 
                   return (
                     <div key={game.id} className="flex flex-col min-w-0">
