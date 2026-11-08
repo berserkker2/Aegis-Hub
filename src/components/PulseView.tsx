@@ -115,6 +115,17 @@ export const PulseView: React.FC<PulseViewProps> = ({
     loadPulseData();
   }, []);
 
+  useEffect(() => {
+    if (window.api?.onDailyActivityUpdated) {
+      const cleanup = window.api.onDailyActivityUpdated((updated) => {
+        if (updated) {
+          setDailyActivity(updated);
+        }
+      });
+      return cleanup;
+    }
+  }, []);
+
   const openUrl = (url: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!url) return;

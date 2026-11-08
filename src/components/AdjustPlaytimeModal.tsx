@@ -8,7 +8,7 @@ interface AdjustPlaytimeModalProps {
   gameTitle: string;
   initialPlaytimeMinutes: number;
   initialLastPlayed?: string;
-  onSave: (playtimeMinutes: number, lastPlayed?: string) => void;
+  onSave: (playtimeMinutes: number, lastPlayed?: string, syncWithActivity?: boolean) => void;
 }
 
 export const AdjustPlaytimeModal: React.FC<AdjustPlaytimeModalProps> = ({
@@ -22,6 +22,7 @@ export const AdjustPlaytimeModal: React.FC<AdjustPlaytimeModalProps> = ({
   const [hours, setHours] = useState<number>(0);
   const [minutes, setMinutes] = useState<number>(0);
   const [dateStr, setDateStr] = useState<string>('');
+  const [syncWithActivity, setSyncWithActivity] = useState<boolean>(true);
 
   useEffect(() => {
     if (isOpen) {
@@ -29,6 +30,7 @@ export const AdjustPlaytimeModal: React.FC<AdjustPlaytimeModalProps> = ({
       setHours(Math.floor(totalMinutes / 60));
       setMinutes(totalMinutes % 60);
       setDateStr(isoToDateInput(initialLastPlayed));
+      setSyncWithActivity(true);
     }
   }, [isOpen, initialPlaytimeMinutes, initialLastPlayed]);
 
@@ -46,6 +48,7 @@ export const AdjustPlaytimeModal: React.FC<AdjustPlaytimeModalProps> = ({
   if (!isOpen) return null;
 
   const currentTotalMinutes = Math.max(0, (hours || 0) * 60 + (minutes || 0));
+  const currentDeltaMinutes = currentTotalMinutes - (initialPlaytimeMinutes || 0);
   const currentIsoDate = dateInputToIso(dateStr);
 
   const handleAddMinutes = (addedMinutes: number) => {
@@ -69,7 +72,7 @@ export const AdjustPlaytimeModal: React.FC<AdjustPlaytimeModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(currentTotalMinutes, currentIsoDate);
+    onSave(currentTotalMinutes, currentIsoDate, syncWithActivity);
     onClose();
   };
 
@@ -245,6 +248,27 @@ export const AdjustPlaytimeModal: React.FC<AdjustPlaytimeModalProps> = ({
                 Never (Clear)
               </button>
             </div>
+          </div>
+
+          {/* Sync with Activity Chart Checkbox */}
+          <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 hover:border-slate-700/80 transition flex items-start gap-2.5">
+            <input
+              type="checkbox"
+              id="sync-activity-checkbox"
+              checked={syncWithActivity}
+              onChange={(e) => setSyncWithActivity(e.target.checked)}
+              className="mt-0.5 rounded border-slate-700 text-blue-500 focus:ring-blue-500/20 bg-slate-900 cursor-pointer"
+            />
+            <label htmlFor="sync-activity-checkbox" className="text-xs text-slate-300 cursor-pointer select-none">
+              <span className="font-semibold text-white block">Update Activity & Playtime chart</span>
+              <span className="text-[11px] text-slate-400 block mt-0.5">
+                {currentDeltaMinutes > 0
+                  ? `Adds ${formatPlaytime(currentDeltaMinutes)} to ${dateStr || 'today'} in your activity chart.`
+                  : currentDeltaMinutes < 0
+                  ? `Subtracts ${formatPlaytime(Math.abs(currentDeltaMinutes))} from ${dateStr || 'today'} in your activity chart.`
+                  : `Records playtime adjustments into your activity chart.`}
+              </span>
+            </label>
           </div>
 
           {/* Actions */}

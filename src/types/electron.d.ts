@@ -67,6 +67,7 @@ declare global {
       autoFetchMissingArtwork: () => Promise<{ updatedCount: number; games: Game[] }>;
       syncSteamPlaytime: () => Promise<{ updatedCount: number; games: Game[] }>;
       syncSteamRatings: () => Promise<{ updatedCount: number; games: Game[] }>;
+      getSteamRating: (args: { title: string; storeId?: string; platform?: string; installUrl?: string; id?: string }) => Promise<{ appId: string; rating: number; scoreDesc?: string; totalReviews: number } | null>;
       syncInstallationStatus: () => Promise<{ updatedCount: number; installedCount: number; games: Game[] }>;
       fetchGameCategories: (game: Game) => Promise<{ genres: string[]; tags?: string[]; developer?: string; publisher?: string; releaseDate?: string; summary?: string; description?: string } | null>;
       syncAllCategories: () => Promise<{ updatedCount: number; games: Game[] }>;
@@ -90,6 +91,7 @@ declare global {
       getGameAchievementProgress: (appId: string) => Promise<{ appId: string; unlocked: number; total: number; percentage: number } | null>;
       getDailyActivity: () => Promise<Record<string, number>>;
       recordDailyActivity: (dateStr: string, minutes: number) => Promise<boolean>;
+      onDailyActivityUpdated?: (callback: (activity: Record<string, number>) => void) => () => void;
       windowMinimize: () => void;
       windowMaximize: () => void;
       windowClose: () => void;

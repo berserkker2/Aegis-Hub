@@ -37,7 +37,7 @@ interface GameDetailModalProps {
   onDeleteGame: (gameId: string) => void;
   onToggleInstalled?: (gameId: string) => void;
   onOpenArtworkPicker?: (game: Game) => void;
-  onUpdateGame?: (game: Game) => void;
+  onUpdateGame?: (game: Game, options?: { syncActivity?: boolean }) => void;
   onToggleHidden?: (gameId: string) => void;
   showPlatformBadges?: boolean;
 }
@@ -61,15 +61,64 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [galleryInitialIndex, setGalleryInitialIndex] = useState(0);
   const [isAdjustPlaytimeOpen, setIsAdjustPlaytimeOpen] = useState(false);
+  const [steamScore, setSteamScore] = useState<{
+    appId?: string;
+    rating: number;
+    scoreDesc?: string;
+    totalReviews?: number;
+  } | null>(() => (game?.rating ? { rating: game.rating } : null));
   const pendingOpenRef = useRef(false);
 
-  const handleSavePlaytime = (newPlaytimeMinutes: number, newLastPlayed?: string) => {
+  // Fetch official Steam Review score whenever a game is opened in GameDetailModal
+  useEffect(() => {
+    if (!game) {
+      setSteamScore(null);
+      return;
+    }
+
+    let isCancelled = false;
+
+    if (game.rating) {
+      setSteamScore((prev) => (prev?.scoreDesc ? prev : { rating: game.rating! }));
+    } else {
+      setSteamScore(null);
+    }
+
+    if (window.api?.getSteamRating) {
+      window.api
+        .getSteamRating({
+          title: game.title,
+          storeId: game.storeId,
+          platform: game.platform,
+          installUrl: game.installUrl,
+          id: game.id,
+        })
+        .then((res) => {
+          if (!isCancelled && res) {
+            setSteamScore(res);
+            if (!game.rating && res.rating && !game.id.startsWith('discovery-') && onUpdateGame) {
+              onUpdateGame({ ...game, rating: res.rating }, { syncActivity: false });
+            }
+          }
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [game?.id, game?.title, game?.storeId, game?.platform]);
+
+  const handleSavePlaytime = (newPlaytimeMinutes: number, newLastPlayed?: string, syncWithActivity: boolean = true) => {
     if (!game || !onUpdateGame) return;
-    onUpdateGame({
-      ...game,
-      playtimeMinutes: newPlaytimeMinutes,
-      lastPlayed: newLastPlayed,
-    });
+    onUpdateGame(
+      {
+        ...game,
+        playtimeMinutes: newPlaytimeMinutes,
+        lastPlayed: newLastPlayed,
+      },
+      { syncActivity: syncWithActivity }
+    );
   };
 
   const isStorePlatform = game
@@ -381,12 +430,51 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
                   {showPlatformBadges && (
                     <PlatformBadge platform={game.platform} size="xs" showLabel />
                   )}
-                  {game.rating && (
+                  {steamScore ? (
+                    <div
+                      className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full border transition-all ${
+                        steamScore.rating >= 80
+                          ? 'bg-cyan-950/40 text-cyan-300 border-cyan-500/30'
+                          : steamScore.rating >= 70
+                          ? 'bg-blue-950/40 text-blue-300 border-blue-500/30'
+                          : steamScore.rating >= 40
+                          ? 'bg-amber-950/40 text-amber-300 border-amber-500/30'
+                          : 'bg-rose-950/40 text-rose-300 border-rose-500/30'
+                      }`}
+                      title={
+                        steamScore.totalReviews
+                          ? `Steam User Reviews: ${steamScore.scoreDesc || `${steamScore.rating}% Positive`} (${steamScore.totalReviews.toLocaleString()} reviews)`
+                          : `Steam Rating: ${steamScore.rating}%`
+                      }
+                    >
+                      <svg className="w-3.5 h-3.5 fill-current shrink-0" viewBox="0 0 24 24">
+                        <path d="M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.029 4.524 4.524s-2.03 4.524-4.524 4.524h-.105l-4.076 2.871c0 .052.004.105.004.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-2.727L.436 14.819C1.929 20.097 6.74 24 12.001 24c6.624 0 11.999-5.375 11.999-12S18.604 0 11.979 0z" />
+                      </svg>
+                      <span className="font-bold">{steamScore.rating}%</span>
+                      {steamScore.scoreDesc && (
+                        <span className="hidden sm:inline font-medium opacity-90 truncate max-w-[160px]">
+                          {steamScore.scoreDesc}
+                        </span>
+                      )}
+                      {steamScore.totalReviews && steamScore.totalReviews > 0 && (
+                        <span className="text-[10px] opacity-75 hidden md:inline">
+                          ({steamScore.totalReviews.toLocaleString()})
+                        </span>
+                      )}
+                    </div>
+                  ) : game.rating ? (
                     <span className="flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30">
                       <Award className="w-3.5 h-3.5" />
                       {game.rating}% Rating
                     </span>
-                  )}
+                  ) : isStorePlatform ? (
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500 px-2.5 py-0.5 rounded-full bg-slate-900/60 border border-slate-800 animate-pulse">
+                      <svg className="w-3.5 h-3.5 fill-current shrink-0 opacity-60" viewBox="0 0 24 24">
+                        <path d="M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.029 4.524 4.524s-2.03 4.524-4.524 4.524h-.105l-4.076 2.871c0 .052.004.105.004.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-2.727L.436 14.819C1.929 20.097 6.74 24 12.001 24c6.624 0 11.999-5.375 11.999-12S18.604 0 11.979 0z" />
+                      </svg>
+                      <span className="text-[11px]">Steam Score...</span>
+                    </div>
+                  ) : null}
                   {game.releaseDate && (
                     <span className="flex items-center gap-1 text-xs text-slate-400 px-2.5 py-0.5 rounded-full bg-slate-800/80 border border-slate-700/50">
                       <Calendar className="w-3.5 h-3.5 text-slate-400" />
@@ -709,6 +797,40 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
                     })}
                   </div>
                 </div>
+
+                {steamScore && (
+                  <div>
+                    <div className="text-slate-500 font-medium mb-1 select-none flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5 fill-current text-slate-400" viewBox="0 0 24 24">
+                        <path d="M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.029 4.524 4.524s-2.03 4.524-4.524 4.524h-.105l-4.076 2.871c0 .052.004.105.004.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-2.727L.436 14.819C1.929 20.097 6.74 24 12.001 24c6.624 0 11.999-5.375 11.999-12S18.604 0 11.979 0z" />
+                      </svg>
+                      <span>Steam Reviews</span>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span
+                          className={`font-bold ${
+                            steamScore.rating >= 80
+                              ? 'text-cyan-400'
+                              : steamScore.rating >= 70
+                              ? 'text-blue-400'
+                              : steamScore.rating >= 40
+                              ? 'text-amber-400'
+                              : 'text-rose-400'
+                          }`}
+                        >
+                          {steamScore.scoreDesc || `${steamScore.rating}% Positive`}
+                        </span>
+                        <span className="font-mono text-slate-200 font-bold">{steamScore.rating}%</span>
+                      </div>
+                      {steamScore.totalReviews && steamScore.totalReviews > 0 && (
+                        <div className="text-[11px] text-slate-400">
+                          Based on {steamScore.totalReviews.toLocaleString()} reviews on Steam
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

@@ -109,11 +109,6 @@ export const GameListView: React.FC<GameListViewProps> = React.memo(({
                         <span>Hidden</span>
                       </span>
                     )}
-                    {game.rating && (
-                      <span className="text-[10px] text-amber-400 font-medium">
-                        ★ {game.rating}%
-                      </span>
-                    )}
                   </div>
                 </div>
               </div>

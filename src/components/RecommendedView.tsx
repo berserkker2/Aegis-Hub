@@ -969,12 +969,6 @@ export const RecommendedView: React.FC<RecommendedViewProps> = ({
                       className="w-full h-full object-cover transition duration-300 group-hover:scale-105"
                       loading="lazy"
                     />
-                    {game.rating && (
-                      <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-md text-[11px] font-bold text-amber-300 border border-amber-500/30 flex items-center gap-1 shadow-sm">
-                        <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                        <span>{game.rating}</span>
-                      </div>
-                    )}
                   </div>
 
                   <div className="p-4 flex flex-col flex-1 justify-between gap-3">

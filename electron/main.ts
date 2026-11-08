@@ -1223,6 +1223,16 @@ ipcMain.handle('sync-steam-ratings', async () => {
   return { updatedCount, games };
 });
 
+ipcMain.handle('get-steam-rating', async (_event, args: { title: string; storeId?: string; platform?: string; installUrl?: string; id?: string }) => {
+  if (!args || !args.title) return null;
+  try {
+    const idOrUrl = args.installUrl || args.id;
+    return await steamRatingService.getSteamScoreForGame(args.title, args.storeId, args.platform, idOrUrl);
+  } catch (err) {
+    return null;
+  }
+});
+
 ipcMain.handle('sync-installation-status', () => {
   const currentGames = store.getGames();
   const { updatedCount, installedCount } = gameInstallationService.syncInstallationStatus(currentGames, true);
@@ -1326,6 +1336,12 @@ ipcMain.handle('get-daily-activity', () => {
     const { updatedCount, games } = steamPlaytimeService.syncGamesPlaytime(currentGames, store);
     if (updatedCount > 0) {
       store.saveGames(games);
+      const updatedActivity = store.getActivity();
+      BrowserWindow.getAllWindows().forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send('daily-activity-updated', updatedActivity);
+        }
+      });
     }
   } catch (err) {
     console.warn('get-daily-activity auto-sync failed:', err);
@@ -1335,6 +1351,12 @@ ipcMain.handle('get-daily-activity', () => {
 
 ipcMain.handle('record-daily-activity', (_event, dateStr: string, minutes: number) => {
   store.recordDailyActivity(dateStr, minutes);
+  const updatedActivity = store.getActivity();
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send('daily-activity-updated', updatedActivity);
+    }
+  });
   return true;
 });
 
@@ -2731,6 +2753,13 @@ async function launchGameCore(gameId: string): Promise<{ success: boolean; messa
           store.saveGames(currentGames);
           updateTrayMenu();
         }
+
+        const updatedActivity = store.getActivity();
+        BrowserWindow.getAllWindows().forEach((win) => {
+          if (!win.isDestroyed()) {
+            win.webContents.send('daily-activity-updated', updatedActivity);
+          }
+        });
       }
 
       mainWindow?.webContents.send('game-status-changed', {

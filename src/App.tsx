@@ -16,6 +16,7 @@ import { PulseView } from './components/PulseView';
 import { BigPictureView } from './components/BigPictureView';
 import { Game, GamePlatform, LauncherSettings, EmulatorConfig, StoreAccount } from './types/game';
 import { checkIsStartSelectCombo } from './utils/gamepadUtils';
+import { toLocalDateStr } from './utils/formatters';
 
 export const App: React.FC = () => {
   const [games, setGames] = useState<Game[]>([]);
@@ -608,12 +609,30 @@ export const App: React.FC = () => {
     handleOpenSettingsTab('about-update');
   }, [handleOpenSettingsTab]);
 
-  const handleSaveEdit = async (updatedGame: Game) => {
+  const handleSaveEdit = async (updatedGame: Game, options?: { syncActivity?: boolean }) => {
     if (updatedGame.id.startsWith('discovery-')) {
       if (selectedGameForDetail?.id === updatedGame.id) {
         setSelectedGameForDetail(updatedGame);
       }
       return;
+    }
+
+    const prevGame = games.find((g) => g.id === updatedGame.id);
+    const prevMinutes = prevGame?.playtimeMinutes || 0;
+    const newMinutes = updatedGame.playtimeMinutes || 0;
+    const deltaMinutes = newMinutes - prevMinutes;
+
+    if (options?.syncActivity !== false && deltaMinutes !== 0) {
+      let targetDate = toLocalDateStr(new Date());
+      if (updatedGame.lastPlayed) {
+        const candidate = updatedGame.lastPlayed.split('T')[0];
+        if (/^\d{4}-\d{2}-\d{2}$/.test(candidate)) {
+          targetDate = candidate;
+        }
+      }
+      if (window.api?.recordDailyActivity) {
+        await window.api.recordDailyActivity(targetDate, deltaMinutes);
+      }
     }
 
     setGames((prev) => {

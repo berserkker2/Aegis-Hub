@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('sync-steam-playtime'),
   syncSteamRatings: (): Promise<{ updatedCount: number; games: Game[] }> =>
     ipcRenderer.invoke('sync-steam-ratings'),
+  getSteamRating: (args: { title: string; storeId?: string; platform?: string; installUrl?: string; id?: string }): Promise<{ appId: string; rating: number; scoreDesc?: string; totalReviews: number } | null> =>
+    ipcRenderer.invoke('get-steam-rating', args),
   syncInstallationStatus: (): Promise<{ updatedCount: number; installedCount: number; games: Game[] }> =>
     ipcRenderer.invoke('sync-installation-status'),
   fetchGameCategories: (game: Game): Promise<{ genres: string[]; tags?: string[]; developer?: string; publisher?: string; releaseDate?: string; summary?: string; description?: string } | null> =>
@@ -88,6 +90,13 @@ contextBridge.exposeInMainWorld('api', {
   getDailyActivity: (): Promise<Record<string, number>> => ipcRenderer.invoke('get-daily-activity'),
   recordDailyActivity: (dateStr: string, minutes: number): Promise<boolean> =>
     ipcRenderer.invoke('record-daily-activity', dateStr, minutes),
+  onDailyActivityUpdated: (callback: (activity: Record<string, number>) => void) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('daily-activity-updated', handler);
+    return () => {
+      ipcRenderer.removeListener('daily-activity-updated', handler);
+    };
+  },
   windowMinimize: (): void => ipcRenderer.send('window-minimize'),
   windowMaximize: (): void => ipcRenderer.send('window-maximize'),
   windowClose: (): void => ipcRenderer.send('window-close'),

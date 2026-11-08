@@ -3,6 +3,14 @@ import path from 'path';
 import { app } from 'electron';
 import { Game } from '../../src/types/game';
 
+export interface SteamReviewScore {
+  appId: string;
+  rating: number;
+  scoreDesc?: string;
+  totalReviews: number;
+  cachedAt?: string;
+}
+
 interface CachedRating {
   rating: number;
   scoreDesc?: string;
@@ -59,48 +67,187 @@ export class SteamRatingService {
     return this.cache.get(appId)?.rating;
   }
 
+  public getCachedScore(appId: string): CachedRating | undefined {
+    this.loadCache();
+    return this.cache.get(appId);
+  }
+
   /**
-   * Fetches the user review rating for a single Steam AppID
+   * Fetches the user review rating & details for a single Steam AppID
    */
-  public async fetchRating(appId: string): Promise<number | undefined> {
+  public async getSteamScore(appId: string): Promise<CachedRating | undefined> {
     this.loadCache();
     const cached = this.cache.get(appId);
     if (cached) {
-      return cached.rating;
+      return cached;
     }
 
+    // 1. Query the official Steam Web API for User Reviews
     try {
-      const url = `https://store.steampowered.com/appreviews/${appId}?json=1&purchase_type=all&num_per_page=0`;
+      const inputData = {
+        appid: parseInt(appId, 10),
+        filter: 2,
+        languages: ['all'],
+        purchase_type: 1,
+        num_per_page: 0,
+      };
+      const url = `https://api.steampowered.com/IUserReviewsService/GetAppReviews/v1/?input_json=${encodeURIComponent(
+        JSON.stringify(inputData)
+      )}`;
       const res = await fetch(url, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SteamGameLauncher/1.0',
+          'Accept': 'application/json',
         },
       });
 
-      if (!res.ok) {
-        return undefined;
-      }
-
-      const json = await res.json();
-      if (json && json.query_summary) {
-        const { total_reviews, total_positive, review_score_desc } = json.query_summary;
-        if (typeof total_reviews === 'number' && total_reviews > 0) {
-          const rating = Math.round((total_positive / total_reviews) * 100);
-          this.cache.set(appId, {
+      if (res.ok) {
+        const json = await res.json();
+        const summary = json?.response?.query_summary;
+        if (summary && typeof summary.total_reviews === 'number' && summary.total_reviews > 0) {
+          const rating = Math.round((summary.total_positive / summary.total_reviews) * 100);
+          const entry: CachedRating = {
             rating,
-            scoreDesc: review_score_desc,
-            totalReviews: total_reviews,
+            scoreDesc: summary.review_score_desc,
+            totalReviews: summary.total_reviews,
             cachedAt: new Date().toISOString(),
-          });
+          };
+          this.cache.set(appId, entry);
           this.saveCache();
-          return rating;
+          return entry;
         }
       }
     } catch (err) {
       // Ignore network errors
     }
 
+    // 2. Fallback: Query Steam Store AppDetails API for Metacritic score
+    try {
+      const detailUrl = `https://store.steampowered.com/api/appdetails?appids=${appId}&l=english&cc=US`;
+      const dRes = await fetch(detailUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SteamGameLauncher/1.0',
+        },
+      });
+      if (dRes.ok) {
+        const dJson = await dRes.json();
+        const meta = dJson?.[appId]?.data?.metacritic;
+        if (meta && typeof meta.score === 'number') {
+          const entry: CachedRating = {
+            rating: meta.score,
+            scoreDesc: 'Metacritic',
+            totalReviews: 0,
+            cachedAt: new Date().toISOString(),
+          };
+          this.cache.set(appId, entry);
+          this.saveCache();
+          return entry;
+        }
+      }
+    } catch {}
+
     return undefined;
+  }
+
+  private isTitleClose(s1: string, s2: string): boolean {
+    const norm = (s: string) =>
+      s
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const n1 = norm(s1);
+    const n2 = norm(s2);
+    if (!n1 || !n2) return false;
+    if (n1 === n2) return true;
+    if (n1.startsWith(n2) || n2.startsWith(n1)) return true;
+    const w1 = n1.split(' ').filter((w) => w.length > 2);
+    const w2 = n2.split(' ').filter((w) => w.length > 2);
+    const common = w1.filter((w) => w2.includes(w));
+    return common.length >= Math.min(2, Math.min(w1.length, w2.length)) && common.length > 0;
+  }
+
+  public async resolveAppId(title: string, storeId?: string): Promise<string | undefined> {
+    if (storeId && /^\d+$/.test(storeId)) {
+      return storeId;
+    }
+
+    const cleanTitle = title
+      .replace(/\(.*?\)/g, '')
+      .replace(/\[.*?\]/g, '')
+      .replace(/\.[a-z0-9]+$/i, '')
+      .replace(/™|®|©/g, '')
+      .trim();
+    if (!cleanTitle || cleanTitle.length < 2) return undefined;
+
+    try {
+      const searchUrl = `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(
+        cleanTitle
+      )}&l=english&cc=US`;
+      const res = await fetch(searchUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SteamGameLauncher/1.0' },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.items && json.items.length > 0) {
+          const matched = json.items.find((it: any) => this.isTitleClose(it.name, cleanTitle)) || json.items[0];
+          if (matched && this.isTitleClose(matched.name, cleanTitle)) {
+            return String(matched.id);
+          }
+        }
+      }
+    } catch {}
+
+    return undefined;
+  }
+
+  /**
+   * Retrieves or discovers the Steam review score for any game (library or discovery)
+   */
+  public async getSteamScoreForGame(
+    title: string,
+    storeId?: string,
+    platform?: string,
+    idOrUrl?: string
+  ): Promise<SteamReviewScore | null> {
+    let appId: string | undefined = undefined;
+
+    if (storeId && /^\d+$/.test(storeId)) {
+      appId = storeId;
+    } else if (storeId) {
+      const match = storeId.match(/\d{3,}/);
+      if (match) appId = match[0];
+    }
+
+    if (!appId && idOrUrl) {
+      const match = idOrUrl.match(/(?:app\/|steam[-:]|rungameid\/)(\d+)/i);
+      if (match) appId = match[1];
+    }
+
+    if (!appId) {
+      appId = await this.resolveAppId(title, storeId);
+    }
+
+    if (!appId) return null;
+
+    const score = await this.getSteamScore(appId);
+    if (!score) return null;
+
+    return {
+      appId,
+      rating: score.rating,
+      scoreDesc: score.scoreDesc,
+      totalReviews: score.totalReviews,
+      cachedAt: score.cachedAt,
+    };
+  }
+
+  /**
+   * Fetches the user review rating for a single Steam AppID
+   */
+  public async fetchRating(appId: string): Promise<number | undefined> {
+    const score = await this.getSteamScore(appId);
+    return score?.rating;
   }
 
   /**

@@ -151,13 +151,6 @@ export const GameCard: React.FC<GameCardProps> = React.memo(({
             ) : (
               <span className="text-slate-500 text-[10px] font-medium">Ready to install</span>
             )}
-
-            {game.rating && (
-              <>
-                <span>•</span>
-                <span className="text-amber-400 font-semibold">{game.rating}%</span>
-              </>
-            )}
           </div>
         </div>
 
