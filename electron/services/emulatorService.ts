@@ -26,7 +26,7 @@ export interface EmulatorConfig {
   name: string;
   shortName: string;
   consoleName: string;
-  consoleCategory: 'sony' | 'nintendo' | 'sega' | 'microsoft' | 'other';
+  consoleCategory: 'sony' | 'nintendo' | 'sega' | 'microsoft' | 'other' | 'custom' | string;
   executablePath?: string;
   installed: boolean;
   romPaths: string[];
@@ -48,6 +48,25 @@ export interface EmulatorConfig {
 const APPDATA = process.env.APPDATA || '';
 const LOCALAPPDATA = process.env.LOCALAPPDATA || '';
 const USERPROFILE = process.env.USERPROFILE || '';
+
+export const DEFAULT_FALLBACK_EXTENSIONS = [
+  // Disc images & General archives
+  '.iso', '.chd', '.bin', '.cue', '.cso', '.zip', '.7z', '.rar', '.gz', '.img', '.mdf', '.rom',
+  // Nintendo Switch & Switch 2
+  '.nsp', '.xci', '.nsz', '.xcz', '.nup', '.nca',
+  // Nintendo Wii / Wii U / GameCube
+  '.wbfs', '.rvz', '.gcm', '.gcz', '.wux', '.wud', '.wua', '.rpx', '.ciso', '.wia',
+  // Nintendo Handhelds (GB/GBC/GBA/NDS/3DS)
+  '.gb', '.gbc', '.gba', '.nds', '.3ds', '.cia', '.cci',
+  // Classic Nintendo (NES/SNES/N64)
+  '.nes', '.sfc', '.smc', '.z64', '.n64', '.v64',
+  // Sony PlayStation (PS1/PS2/PS3/PSP/PS Vita)
+  '.pbp', '.pkg', '.elf',
+  // Sega (Genesis/MD/Saturn/Dreamcast)
+  '.md', '.gen', '.smd', '.cdi', '.gdi',
+  // Microsoft Xbox / Xbox 360
+  '.xbe', '.xex',
+];
 
 function cleanRomTitle(filename: string, fullPath?: string): string {
   // Strip file extension
@@ -79,9 +98,16 @@ function cleanRomTitle(filename: string, fullPath?: string): string {
   if (/^disgaea\s*psp/i.test(title)) return 'Disgaea - Afternoon of Darkness';
   if (/^brave\s*story/i.test(title)) return 'Brave Story - New Traveler';
 
+  // Replace underscores and dots with spaces first so words are properly separated
+  title = title.replace(/[._]/g, ' ');
+
   // Remove release group suffixes and common dump group tags
-  title = title.replace(/_[A-Z0-9_-]+$/i, ' ');
   title = title.replace(/\b(undub|independent|repack|trashman|legacy|venom|xenophobia|supremacy|sweetnds|ddumpers)\b/gi, ' ');
+
+  // Expand CamelCase if filename had no spaces (e.g. OcarinaOfTime -> Ocarina Of Time)
+  if (/^[a-z]+[A-Z0-9]/.test(title) && !title.trim().includes(' ')) {
+    title = title.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([a-zA-Z])(\d+)/g, '$1 $2');
+  }
 
   // Handle ', The'
   title = title.replace(/,\s*The\b/i, '');
@@ -89,8 +115,7 @@ function cleanRomTitle(filename: string, fullPath?: string): string {
     title = 'The ' + title;
   }
 
-  // Replace underscores and extra dots with spaces
-  title = title.replace(/[._]/g, ' ').replace(/\s+/g, ' ').trim();
+  title = title.replace(/\s+/g, ' ').trim();
 
   // Capitalize words nicely if all lowercase
   if (title === title.toLowerCase()) {
@@ -290,7 +315,7 @@ export const EMULATOR_PRESETS: EmulatorPreset[] = [
     consoleCategory: 'nintendo',
     color: 'text-red-400',
     badgeBg: 'bg-red-500/15 border-red-500/30 text-red-300',
-    extensions: ['.nsp', '.xci'],
+    extensions: ['.nsp', '.xci', '.nsz', '.xcz', '.nup', '.nca'],
     launchArgs: (romPath) => ['-f', romPath],
     candidateExePaths: () => [
       path.join(LOCALAPPDATA, 'Programs', 'Ryujinx', 'Ryujinx.exe'),
@@ -326,7 +351,7 @@ export const EMULATOR_PRESETS: EmulatorPreset[] = [
     consoleCategory: 'nintendo',
     color: 'text-cyan-400',
     badgeBg: 'bg-cyan-500/15 border-cyan-500/30 text-cyan-300',
-    extensions: ['.nsp', '.xci'],
+    extensions: ['.nsp', '.xci', '.nsz', '.xcz', '.nup', '.nca'],
     launchArgs: (romPath) => ['-f', '-g', romPath],
     candidateExePaths: () => [
       path.join(LOCALAPPDATA, 'yuzu', 'yuzu-windows-msvc', 'yuzu.exe'),
@@ -899,6 +924,7 @@ export class EmulatorService {
         systemKey: preset.systemKey,
         websiteUrl: savedItem?.websiteUrl || preset.websiteUrl,
         downloadUrl: savedItem?.downloadUrl || preset.downloadUrl,
+        customLogoUrl: savedItem?.customLogoUrl,
       };
 
       detectedEmulators.push(emuConfig);
@@ -950,9 +976,10 @@ export class EmulatorService {
 
       const exePath = savedItem.executablePath;
       const isInstalled = Boolean(exePath && fs.existsSync(exePath));
-      const extensions = savedItem.customExtensions && savedItem.customExtensions.length > 0
+      const extensions = (savedItem.customExtensions && savedItem.customExtensions.length > 0
         ? savedItem.customExtensions
-        : ['.iso', '.chd', '.bin', '.cso', '.zip', '.7z', '.nsp', '.xci', '.rvz', '.wbfs', '.nds'];
+        : DEFAULT_FALLBACK_EXTENSIONS
+      ).map((e) => (e.startsWith('.') ? e.toLowerCase().trim() : `.${e.toLowerCase().trim()}`));
 
       const scannedGamesFromDirs: { title: string; romPath: string }[] = [];
       for (const dir of savedItem.romPaths || []) {
@@ -1076,7 +1103,7 @@ export class EmulatorService {
           this.scanDirForRoms(fullPath, extensions, output, maxDepth - 1);
         } else if (stat.isFile()) {
           const ext = path.extname(item).toLowerCase();
-          if (extensions.includes(ext)) {
+          if (extensions.some((e) => (e.startsWith('.') ? e.toLowerCase() : `.${e.toLowerCase()}`) === ext)) {
             // Strictly exclude any BIOS or firmware files
             if (!isBiosOrSystemFile(item)) {
               output.push({

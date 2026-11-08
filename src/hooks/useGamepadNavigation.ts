@@ -1,4 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
+import {
+  ControllerFamily,
+  detectControllerFamily,
+  getNormalizedGamepadState,
+} from '../utils/gamepadUtils';
 
 export interface GamepadNavCallbacks {
   onUp?: () => void;
@@ -11,7 +16,9 @@ export interface GamepadNavCallbacks {
   onActionY?: () => void; // Button Y / Key F (Favorite)
   onPrevTab?: () => void; // LB / Q / PageUp
   onNextTab?: () => void; // RB / E / PageDown
+  onSelect?: () => void; // Select / Back / View / Share
   onStart?: () => void; // Start / Menu / Key M
+  onToggleBigPicture?: () => void; // Start + Select combo
   onGuide?: () => void; // Xbox Guide / Home button
   onRightStickY?: (value: number) => void; // Right stick vertical axis (-1: up, +1: down)
   onInputActivity?: (source: 'keyboard' | 'gamepad') => void;
@@ -20,33 +27,25 @@ export interface GamepadNavCallbacks {
 export type InputDeviceType = 'keyboard' | 'xbox' | 'playstation' | 'switch';
 
 export function detectControllerType(id?: string | null): 'xbox' | 'playstation' | 'switch' {
-  if (!id) return 'xbox';
-  const lower = id.toLowerCase();
-  if (
-    lower.includes('sony') ||
-    lower.includes('dualsense') ||
-    lower.includes('dualshock') ||
-    lower.includes('playstation') ||
-    lower.includes('054c') ||
-    lower.includes('ps4') ||
-    lower.includes('ps5')
-  ) {
-    return 'playstation';
-  }
-  if (
-    lower.includes('nintendo') ||
-    lower.includes('switch') ||
-    lower.includes('joy-con') ||
-    lower.includes('pro controller') ||
-    lower.includes('057e')
-  ) {
-    return 'switch';
-  }
-  return 'xbox';
+  const family = detectControllerFamily(id);
+  if (family === 'generic') return 'xbox';
+  return family;
 }
 
 interface UseGamepadNavOptions {
   enabled?: boolean;
+}
+
+interface NormalizedButtonState {
+  confirm: boolean;
+  back: boolean;
+  actionX: boolean;
+  actionY: boolean;
+  prevTab: boolean;
+  nextTab: boolean;
+  select: boolean;
+  start: boolean;
+  guide: boolean;
 }
 
 export function useGamepadNavigation(callbacks: GamepadNavCallbacks, options: UseGamepadNavOptions = { enabled: true }) {
@@ -62,13 +61,74 @@ export function useGamepadNavigation(callbacks: GamepadNavCallbacks, options: Us
 
   const enabled = options.enabled !== false;
 
+  // Track native window focus state
+  const isWindowFocusedRef = useRef<boolean>(true);
+
+  useEffect(() => {
+    if (window.api?.isMainWindowFocused) {
+      window.api.isMainWindowFocused().then((f) => {
+        isWindowFocusedRef.current = f;
+      });
+    }
+
+    let unsubFocus: (() => void) | undefined;
+    if (window.api?.onMainWindowFocus) {
+      unsubFocus = window.api.onMainWindowFocus((focused) => {
+        isWindowFocusedRef.current = focused;
+      });
+    }
+
+    const handleFocus = () => {
+      isWindowFocusedRef.current = true;
+    };
+    const handleBlur = () => {
+      isWindowFocusedRef.current = false;
+      prevButtonsRef.current = {
+        confirm: false,
+        back: false,
+        actionX: false,
+        actionY: false,
+        prevTab: false,
+        nextTab: false,
+        select: false,
+        start: false,
+        guide: false,
+      };
+      comboHasBeenReleasedRef.current = false;
+    };
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      if (unsubFocus) unsubFocus();
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, []);
+
   // Track button state to prevent firing every frame (trigger once per press)
-  const prevButtonsRef = useRef<Record<number, boolean>>({});
+  const prevButtonsRef = useRef<NormalizedButtonState>({
+    confirm: false,
+    back: false,
+    actionX: false,
+    actionY: false,
+    prevTab: false,
+    nextTab: false,
+    select: false,
+    start: false,
+    guide: false,
+  });
+
   const lastAxisMoveTimeRef = useRef<{ axis: string; time: number; repeatCount: number }>({
     axis: '',
     time: 0,
     repeatCount: 0,
   });
+
+  // Must release Start and Select completely before allowing exit toggle
+  const mountedTimeRef = useRef<number>(Date.now());
+  const comboHasBeenReleasedRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (!enabled) return;
@@ -76,6 +136,24 @@ export function useGamepadNavigation(callbacks: GamepadNavCallbacks, options: Us
     let animFrame: number | null = null;
 
     const pollGamepad = () => {
+      // Ignore all gamepad inputs if window is not focused or is hidden
+      const isFocused = isWindowFocusedRef.current && (typeof document === 'undefined' || !document.hidden);
+      if (!isFocused) {
+        prevButtonsRef.current = {
+          confirm: false,
+          back: false,
+          actionX: false,
+          actionY: false,
+          prevTab: false,
+          nextTab: false,
+          select: false,
+          start: false,
+          guide: false,
+        };
+        animFrame = requestAnimationFrame(pollGamepad);
+        return;
+      }
+
       const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
       const pad = Array.from(gamepads).find((p) => p && p.connected);
 
@@ -84,23 +162,18 @@ export function useGamepadNavigation(callbacks: GamepadNavCallbacks, options: Us
         return;
       }
 
-      // Check if any button is pressed or stick tilted to switch input mode to controller
-      const hasButtonPressed = pad.buttons.some((b) => b.pressed);
-      const stickTilted =
-        Math.abs(pad.axes[0] ?? 0) > 0.4 ||
-        Math.abs(pad.axes[1] ?? 0) > 0.4 ||
-        Math.abs(pad.axes[3] ?? 0) > 0.4;
+      const state = getNormalizedGamepadState(pad);
 
-      if (hasButtonPressed || stickTilted) {
+      if (state.hasAnyInput) {
         callbacksRef.current.onInputActivity?.('gamepad');
         if (!isGamepadActiveRef.current) {
           isGamepadActiveRef.current = true;
           setIsGamepadActive(true);
         }
-        const type = detectControllerType(pad.id);
-        if (inputDeviceTypeRef.current !== type) {
-          inputDeviceTypeRef.current = type;
-          setInputDeviceType(type);
+        const detectedType: InputDeviceType = state.family === 'generic' ? 'xbox' : state.family;
+        if (inputDeviceTypeRef.current !== detectedType) {
+          inputDeviceTypeRef.current = detectedType;
+          setInputDeviceType(detectedType);
         }
       }
 
@@ -114,58 +187,64 @@ export function useGamepadNavigation(callbacks: GamepadNavCallbacks, options: Us
       const prev = prevButtonsRef.current;
       const cb = callbacksRef.current;
 
-      // Button 0: A (Xbox) / Cross (PlayStation)
-      if (pad.buttons[0]?.pressed && !prev[0]) {
+      // 1. Confirm (A on Xbox / Cross on PS / A on Switch)
+      if (state.confirm && !prev.confirm) {
         cb.onConfirm?.();
       }
-      // Button 1: B (Xbox) / Circle (PlayStation)
-      if (pad.buttons[1]?.pressed && !prev[1]) {
+      // 2. Back (B on Xbox / Circle on PS / B on Switch)
+      if (state.back && !prev.back) {
         cb.onBack?.();
       }
-      // Button 2: X (Xbox) / Square (PlayStation)
-      if (pad.buttons[2]?.pressed && !prev[2]) {
+      // 3. Action X (X on Xbox / Square on PS / Y on Switch)
+      if (state.actionX && !prev.actionX) {
         cb.onActionX?.();
       }
-      // Button 3: Y (Xbox) / Triangle (PlayStation)
-      if (pad.buttons[3]?.pressed && !prev[3]) {
+      // 4. Action Y (Y on Xbox / Triangle on PS / X on Switch)
+      if (state.actionY && !prev.actionY) {
         cb.onActionY?.();
       }
-      // Button 4: Left Bumper (LB / L1)
-      if (pad.buttons[4]?.pressed && !prev[4]) {
+      // 5. Left Bumper (LB / L1 / L)
+      if (state.prevTab && !prev.prevTab) {
         cb.onPrevTab?.();
       }
-      // Button 5: Right Bumper (RB / R1)
-      if (pad.buttons[5]?.pressed && !prev[5]) {
+      // 6. Right Bumper (RB / R1 / R)
+      if (state.nextTab && !prev.nextTab) {
         cb.onNextTab?.();
       }
-      // Button 8: Back / Select / View / Share
-      if (pad.buttons[8]?.pressed && !prev[8]) {
-        cb.onStart?.();
+
+      // 7. Start + Select combo: toggle Big Picture exit with release guard & startup immunity
+      if (!state.start && !state.select) {
+        comboHasBeenReleasedRef.current = true;
       }
-      // Button 9: Start / Menu / Options
-      if (pad.buttons[9]?.pressed && !prev[9]) {
-        cb.onStart?.();
+
+      if (state.isStartSelectCombo) {
+        const canTriggerExit = comboHasBeenReleasedRef.current && (Date.now() - mountedTimeRef.current > 1500);
+        if (canTriggerExit && (!prev.start || !prev.select)) {
+          comboHasBeenReleasedRef.current = false;
+          cb.onToggleBigPicture?.();
+        }
+      } else {
+        // Button Select / Back / Minus (only when Start is not also down)
+        if (state.select && !prev.select && !state.start) {
+          cb.onSelect?.();
+        }
+        // Button Start / Menu / Plus (only when Select is not also down)
+        if (state.start && !prev.start && !state.select) {
+          cb.onStart?.();
+        }
       }
-      // Button 16: Xbox Guide / PS Home button
-      if (pad.buttons[16]?.pressed && !prev[16]) {
+
+      // 8. Guide / Home button (Xbox Guide / PS Home / Switch Home)
+      if (state.guide && !prev.guide) {
         cb.onGuide?.();
       }
 
-      // D-Pad buttons (standard mapping: 12 Up, 13 Down, 14 Left, 15 Right)
-      const dpadUp = pad.buttons[12]?.pressed;
-      const dpadDown = pad.buttons[13]?.pressed;
-      const dpadLeft = pad.buttons[14]?.pressed;
-      const dpadRight = pad.buttons[15]?.pressed;
-
-      // Left Analog Stick (Axes 0 is X, Axes 1 is Y)
-      const stickX = pad.axes[0] ?? 0;
-      const stickY = pad.axes[1] ?? 0;
+      // 9. D-Pad & Left Analog Stick
       const deadzone = 0.45;
-
-      const isUp = dpadUp || stickY < -deadzone;
-      const isDown = dpadDown || stickY > deadzone;
-      const isLeft = dpadLeft || stickX < -deadzone;
-      const isRight = dpadRight || stickX > deadzone;
+      const isUp = state.dpadUp || state.leftStickY < -deadzone;
+      const isDown = state.dpadDown || state.leftStickY > deadzone;
+      const isLeft = state.dpadLeft || state.leftStickX < -deadzone;
+      const isRight = state.dpadRight || state.leftStickX > deadzone;
 
       let currentDirection = '';
       if (isUp) currentDirection = 'up';
@@ -196,20 +275,27 @@ export function useGamepadNavigation(callbacks: GamepadNavCallbacks, options: Us
         lastAxisMoveTimeRef.current = { axis: '', time: 0, repeatCount: 0 };
       }
 
-      // Right Analog Stick vertical axis (Axis 3 is Y in standard gamepad mapping)
-      const rStickY = pad.axes[3] ?? 0;
+      // 10. Right Analog Stick vertical axis (Smooth modal and description scrolling)
       const rDeadzone = 0.18;
-      if (Math.abs(rStickY) > rDeadzone) {
+      if (Math.abs(state.rightStickY) > rDeadzone) {
         callbacksRef.current.onInputActivity?.('gamepad');
-        const sign = Math.sign(rStickY);
-        const magnitude = (Math.abs(rStickY) - rDeadzone) / (1 - rDeadzone);
+        const sign = Math.sign(state.rightStickY);
+        const magnitude = (Math.abs(state.rightStickY) - rDeadzone) / (1 - rDeadzone);
         cb.onRightStickY?.(sign * magnitude);
       }
 
       // Save button states for next frame
-      for (let i = 0; i < pad.buttons.length; i++) {
-        prev[i] = pad.buttons[i].pressed;
-      }
+      prevButtonsRef.current = {
+        confirm: state.confirm,
+        back: state.back,
+        actionX: state.actionX,
+        actionY: state.actionY,
+        prevTab: state.prevTab,
+        nextTab: state.nextTab,
+        select: state.select,
+        start: state.start,
+        guide: state.guide,
+      };
 
       animFrame = requestAnimationFrame(pollGamepad);
     };
@@ -289,53 +375,45 @@ export function useGamepadNavigation(callbacks: GamepadNavCallbacks, options: Us
         inputDeviceTypeRef.current = 'keyboard';
         setInputDeviceType('keyboard');
       }
-      if (isGamepadActiveRef.current) {
-        isGamepadActiveRef.current = false;
-        setIsGamepadActive(false);
-      }
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      callbacksRef.current.onInputActivity?.('keyboard');
       switchToKeyboardIfNeeded();
 
-      // Don't intercept if user is typing in an input
-      if ((e.target as HTMLElement)?.tagName === 'INPUT') {
-        if (e.key === 'Escape') {
-          callbacksRef.current.onBack?.();
-        }
+      const cb = callbacksRef.current;
+      const target = e.target as HTMLElement | null;
+
+      // Do not intercept arrow navigation if typing in an input or textarea
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
         return;
       }
 
-      // Throttle OS repeat rate when holding a key down so it doesn't flood rendering
-      if (e.repeat) {
-        const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-        if (now - lastKeyRepeatTime < 75) {
-          e.preventDefault();
-          return;
-        }
+      const now = performance.now();
+
+      // Handle Arrow Keys with smooth key repeating
+      if (
+        e.key === 'ArrowUp' ||
+        e.key === 'ArrowDown' ||
+        e.key === 'ArrowLeft' ||
+        e.key === 'ArrowRight'
+      ) {
+        e.preventDefault();
+        if (now - lastKeyRepeatTime < 130) return;
         lastKeyRepeatTime = now;
+
+        if (e.key === 'ArrowUp') cb.onUp?.();
+        if (e.key === 'ArrowDown') cb.onDown?.();
+        if (e.key === 'ArrowLeft') cb.onLeft?.();
+        if (e.key === 'ArrowRight') cb.onRight?.();
+        return;
       }
 
-      const cb = callbacksRef.current;
-
       switch (e.key) {
-        case 'ArrowUp':
-          e.preventDefault();
-          cb.onUp?.();
-          break;
-        case 'ArrowDown':
-          e.preventDefault();
-          cb.onDown?.();
-          break;
-        case 'ArrowLeft':
-          e.preventDefault();
-          cb.onLeft?.();
-          break;
-        case 'ArrowRight':
-          e.preventDefault();
-          cb.onRight?.();
-          break;
         case 'Enter':
         case ' ':
           e.preventDefault();
@@ -348,8 +426,8 @@ export function useGamepadNavigation(callbacks: GamepadNavCallbacks, options: Us
           break;
         case 'd':
         case 'D':
-        case 's':
-        case 'S':
+        case 'x':
+        case 'X':
           e.preventDefault();
           cb.onActionX?.();
           break;

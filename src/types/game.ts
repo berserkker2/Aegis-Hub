@@ -5,7 +5,7 @@ export interface EmulatorConfig {
   name: string;
   shortName: string;
   consoleName: string;
-  consoleCategory: 'sony' | 'nintendo' | 'sega' | 'microsoft' | 'other';
+  consoleCategory: 'sony' | 'nintendo' | 'sega' | 'microsoft' | 'other' | 'custom' | string;
   executablePath?: string;
   installed: boolean;
   romPaths: string[];

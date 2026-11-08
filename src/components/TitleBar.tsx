@@ -109,7 +109,7 @@ export const TitleBar: React.FC<TitleBarProps> = React.memo(({
         {onEnterBigPicture && (
           <button
             onClick={onEnterBigPicture}
-            title="Enter Big Picture Mode (F11 / Alt+Enter / Gamepad Guide or Start)"
+            title="Enter Big Picture Mode (F11 / Alt+Enter / Gamepad: Start + Select)"
             className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-blue-300 hover:text-white bg-blue-600/20 hover:bg-blue-600/35 rounded-md border border-blue-500/35 transition group shadow-sm"
           >
             <Tv className="w-3.5 h-3.5 text-blue-400 group-hover:scale-110 transition-transform" />

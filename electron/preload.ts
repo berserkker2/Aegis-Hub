@@ -59,8 +59,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('open-external-url', url),
   getEmulators: (): Promise<any> => ipcRenderer.invoke('get-emulators'),
   scanEmulators: (): Promise<any> => ipcRenderer.invoke('scan-emulators'),
-  scrapeAllEmulatorsMetadata: (): Promise<{ updatedCount: number; totalCount: number; games: any[] }> =>
-    ipcRenderer.invoke('scrape-all-emulators-metadata'),
+  scrapeAllEmulatorsMetadata: (options?: { emulatorId?: string; forceRefresh?: boolean }): Promise<{ updatedCount: number; totalCount: number; games: any[] }> =>
+    ipcRenderer.invoke('scrape-all-emulators-metadata', options),
   scrapeSingleGameMetadata: (gameId: string): Promise<{ success: boolean; game?: any; games?: any[]; message?: string }> =>
     ipcRenderer.invoke('scrape-single-game-metadata', gameId),
   onScraperProgress: (callback: (data: { current: number; total: number; gameTitle: string; coverUrl?: string }) => void) => {
@@ -139,9 +139,20 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('store-accounts-updated', listener);
     return () => ipcRenderer.removeListener('store-accounts-updated', listener);
   },
+  onEmulatorsUpdated: (callback: (emulators: any[]) => void) => {
+    const listener = (_event: any, emulators: any[]) => callback(emulators);
+    ipcRenderer.on('emulators-updated', listener);
+    return () => ipcRenderer.removeListener('emulators-updated', listener);
+  },
   onRestoreBigPicture: (callback: () => void) => {
     const listener = () => callback();
     ipcRenderer.on('restore-big-picture', listener);
     return () => ipcRenderer.removeListener('restore-big-picture', listener);
+  },
+  isMainWindowFocused: (): Promise<boolean> => ipcRenderer.invoke('is-main-window-focused'),
+  onMainWindowFocus: (callback: (focused: boolean) => void) => {
+    const listener = (_event: any, focused: boolean) => callback(focused);
+    ipcRenderer.on('main-window-focused', listener);
+    return () => ipcRenderer.removeListener('main-window-focused', listener);
   },
 });

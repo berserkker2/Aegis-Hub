@@ -9,6 +9,7 @@ import {
   Plus,
   Play,
   RefreshCw,
+  Image as ImageIcon,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -20,6 +21,7 @@ import { GameCard } from './GameCard';
 import { LibraryViewSlider, getViewMode, getThumbnailWidth } from './LibraryViewSlider';
 import { GameListView } from './GameListView';
 import { GameIconView } from './GameIconView';
+import { getSystemLogo } from '../utils/emulatorSystems';
 
 interface EmulatorViewProps {
   games: Game[];
@@ -33,11 +35,14 @@ interface EmulatorViewProps {
   onToggleHidden?: (gameId: string, e?: React.MouseEvent) => void;
   onLaunchEmulator: (emulatorId: string, e: React.MouseEvent) => void;
   onScanEmulators: () => void;
+  onScrapeEmulators?: (emulatorId?: string, forceRefresh?: boolean) => void;
   onUpdateEmulator?: (updated: EmulatorConfig) => void;
   onDuplicateEmulator?: (emulator: EmulatorConfig) => void;
   onDeleteEmulator?: (emulatorId: string) => void;
   onOpenSettingsTab?: (tab: 'emulation') => void;
   isScanning?: boolean;
+  isScraping?: boolean;
+  scrapingProgress?: { current: number; total: number; gameTitle: string; coverUrl?: string } | null;
 }
 
 type SortOption = 'lastPlayed' | 'title' | 'playtime' | 'rating' | 'addedDate';
@@ -54,11 +59,14 @@ export const EmulatorView: React.FC<EmulatorViewProps> = React.memo(({
   onToggleHidden,
   onLaunchEmulator,
   onScanEmulators,
+  onScrapeEmulators,
   onUpdateEmulator,
   onDuplicateEmulator,
   onDeleteEmulator,
   onOpenSettingsTab,
   isScanning = false,
+  isScraping = false,
+  scrapingProgress = null,
 }) => {
   const [selectedEmulatorId, setSelectedEmulatorId] = useState<string | 'all'>('all');
   const [sortBy, setSortBy] = useState<SortOption>('lastPlayed');
@@ -68,6 +76,15 @@ export const EmulatorView: React.FC<EmulatorViewProps> = React.memo(({
   });
   const [subSearch, setSubSearch] = useState('');
   const sliderSaveTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (selectedEmulatorId !== 'all') {
+      const exists = emulators.some((e) => e.id === selectedEmulatorId);
+      if (!exists) {
+        setSelectedEmulatorId('all');
+      }
+    }
+  }, [emulators, selectedEmulatorId]);
 
   const handleSliderChange = (newVal: number) => {
     setSliderValue(newVal);
@@ -91,7 +108,7 @@ export const EmulatorView: React.FC<EmulatorViewProps> = React.memo(({
   const filteredGames = useMemo(() => {
     const q = (searchQuery || subSearch).toLowerCase().trim();
     const selectedEmu = selectedEmulatorId !== 'all' ? emulators.find((e) => e.id === selectedEmulatorId) : undefined;
-    const systemEmuIds = selectedEmu?.systemKey
+    const systemEmuIds = selectedEmu?.systemKey && selectedEmu.systemKey !== 'custom'
       ? new Set(emulators.filter((e) => e.systemKey === selectedEmu.systemKey).map((e) => e.id))
       : null;
 
@@ -273,7 +290,17 @@ export const EmulatorView: React.FC<EmulatorViewProps> = React.memo(({
         <div className="flex flex-wrap items-center justify-between gap-3 px-1 py-1 text-xs">
           <div className="flex items-center gap-2">
             <div className="text-sm font-bold text-slate-200 flex items-center gap-2">
-              <Tv className="w-4 h-4 text-violet-400" />
+              {selectedEmulatorId !== 'all' && activeEmuConfig ? (
+                <div className="h-7 px-2 py-0.5 rounded-lg bg-slate-950/80 border border-slate-800 flex items-center justify-center shrink-0 shadow-sm">
+                  <img
+                    src={activeEmuConfig.customLogoUrl || getSystemLogo(activeEmuConfig.systemKey || activeEmuConfig.id || activeEmuConfig.consoleName)}
+                    alt={activeEmuConfig.name}
+                    className="h-5 w-auto max-w-[100px] object-contain drop-shadow-sm"
+                  />
+                </div>
+              ) : (
+                <Tv className="w-4 h-4 text-violet-400" />
+              )}
               <span>
                 {selectedEmulatorId === 'all'
                   ? 'All Emulated Titles'
@@ -311,13 +338,40 @@ export const EmulatorView: React.FC<EmulatorViewProps> = React.memo(({
             {/* Refresh ROMs Button */}
             <button
               onClick={onScanEmulators}
-              disabled={isScanning}
+              disabled={isScanning || isScraping}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-violet-600/15 hover:bg-violet-600/25 text-violet-300 border border-violet-500/30 text-xs font-semibold shadow-sm transition disabled:opacity-50"
               title="Rescan configured folders for newly added ROMs or ISOs"
             >
               <RefreshCw className={`w-3 h-3 ${isScanning ? 'animate-spin' : ''}`} />
               <span>{isScanning ? 'Refreshing...' : 'Refresh ROMs'}</span>
             </button>
+
+            {/* Update Covers & Metadata Button */}
+            {onScrapeEmulators && (
+              <button
+                onClick={() => onScrapeEmulators(selectedEmulatorId !== 'all' ? selectedEmulatorId : undefined, true)}
+                disabled={isScraping || isScanning || emulatorGames.length === 0}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-300 border border-emerald-500/30 text-xs font-semibold shadow-sm transition disabled:opacity-50"
+                title={
+                  selectedEmulatorId !== 'all'
+                    ? 'Fetch or refresh covers and metadata for the selected emulator'
+                    : 'Fetch or refresh covers and metadata for all emulated games'
+                }
+              >
+                {isScraping ? (
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                ) : (
+                  <ImageIcon className="w-3 h-3" />
+                )}
+                <span>
+                  {isScraping
+                    ? scrapingProgress
+                      ? `Updating Covers (${scrapingProgress.current}/${scrapingProgress.total})...`
+                      : 'Updating Covers...'
+                    : 'Update Covers'}
+                </span>
+              </button>
+            )}
           </div>
 
           {/* Right Tools: Sort & Grid switch */}

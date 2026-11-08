@@ -39,7 +39,29 @@ export interface SystemDefinition {
 }
 
 export const SYSTEM_DEFINITIONS: SystemDefinition[] = [
-  // 1. Nintendo Switch
+  // 1. Nintendo Switch 2
+  {
+    systemKey: 'switch2',
+    name: 'Nintendo Switch 2',
+    shortName: 'Switch 2',
+    logo: logoSwitch,
+    category: 'nintendo',
+    supportedConsoles: ['Nintendo Switch 2', 'Switch 2'],
+    defaultExtensions: ['.nup', '.nsp', '.xci', '.nsz', '.xcz', '.nca'],
+    emulators: [
+      {
+        id: 'lichii',
+        name: 'Lichii',
+        websiteUrl: 'https://github.com/',
+        candidateExeNames: ['lichii.exe', 'Lichii.exe'],
+        defaultExtensions: ['.nup', '.nsp', '.xci', '.nsz', '.xcz', '.nca'],
+        defaultArgs: '%ROM%',
+        description: 'Next-generation Nintendo Switch 2 emulator.',
+      },
+    ],
+  },
+
+  // 2. Nintendo Switch
   {
     systemKey: 'switch',
     name: 'Nintendo Switch',
@@ -47,7 +69,7 @@ export const SYSTEM_DEFINITIONS: SystemDefinition[] = [
     logo: logoSwitch,
     category: 'nintendo',
     supportedConsoles: ['Nintendo Switch'],
-    defaultExtensions: ['.nsp', '.xci', '.nca', '.nsz'],
+    defaultExtensions: ['.nsp', '.xci', '.nca', '.nsz', '.nup', '.xcz'],
     emulators: [
       {
         id: 'ryujinx',
@@ -55,7 +77,7 @@ export const SYSTEM_DEFINITIONS: SystemDefinition[] = [
         websiteUrl: 'https://ryujinx.org/',
         downloadUrl: 'https://github.com/Ryujinx/release-channel-master/releases/latest',
         candidateExeNames: ['Ryujinx.exe', 'Ryujinx.Ava.exe'],
-        defaultExtensions: ['.nsp', '.xci', '.nca', '.nsz'],
+        defaultExtensions: ['.nsp', '.xci', '.nca', '.nsz', '.nup', '.xcz'],
         defaultArgs: '%ROM%',
         description: 'Open-source Nintendo Switch emulator focused on accuracy and compatibility.',
       },
@@ -64,7 +86,7 @@ export const SYSTEM_DEFINITIONS: SystemDefinition[] = [
         name: 'Torzu / Suyu',
         websiteUrl: 'https://github.com/torzu-emu/torzu',
         candidateExeNames: ['torzu.exe', 'suyu.exe', 'yuzu.exe'],
-        defaultExtensions: ['.nsp', '.xci', '.nca', '.nsz'],
+        defaultExtensions: ['.nsp', '.xci', '.nca', '.nsz', '.nup', '.xcz'],
         defaultArgs: '-f -g %ROM%',
         description: 'Community-maintained Switch emulation fork with high performance.',
       },

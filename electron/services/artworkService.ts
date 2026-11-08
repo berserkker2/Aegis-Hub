@@ -92,14 +92,14 @@ const KNOWN_GAMES_ART: Record<string, { cover: string; banner: string; genres: s
     dev: 'Bloober Team',
   },
   'the witcher 3': {
-    cover: 'https://images.unsplash.com/photo-1579373903781-fd5c0c30c4cd?auto=format&fit=crop&w=600&q=80',
-    banner: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1920&q=80',
+    cover: 'https://cdn.cloudflare.steamstatic.com/steam/apps/292030/library_600x900.jpg',
+    banner: 'https://cdn.cloudflare.steamstatic.com/steam/apps/292030/library_hero.jpg',
     genres: ['RPG', 'Open World', 'Action'],
     dev: 'CD PROJEKT RED',
   },
   'cyberpunk 2077': {
-    cover: 'https://images.unsplash.com/photo-1563089145-599997674d42?auto=format&fit=crop&w=600&q=80',
-    banner: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=1920&q=80',
+    cover: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1091500/library_600x900.jpg',
+    banner: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1091500/library_hero.jpg',
     genres: ['RPG', 'Action', 'Cyberpunk'],
     dev: 'CD PROJEKT RED',
   },
@@ -110,22 +110,72 @@ const KNOWN_GAMES_ART: Record<string, { cover: string; banner: string; genres: s
     dev: 'Quantic Dream',
   },
   'elden ring': {
-    cover: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=600&q=80',
-    banner: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1920&q=80',
+    cover: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1245620/library_600x900.jpg',
+    banner: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1245620/library_hero.jpg',
     genres: ['Souls-like', 'Action RPG', 'Open World'],
     dev: 'FromSoftware',
   },
   'hades': {
-    cover: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=600&q=80',
-    banner: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1920&q=80',
+    cover: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1145360/library_600x900.jpg',
+    banner: 'https://cdn.cloudflare.steamstatic.com/steam/apps/1145360/library_hero.jpg',
     genres: ['Roguelike', 'Action', 'Indie'],
     dev: 'Supergiant Games',
   },
   'balatro': {
-    cover: 'https://images.unsplash.com/photo-1520697830682-bbb6e85e2b0b?auto=format&fit=crop&w=600&q=80',
-    banner: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?auto=format&fit=crop&w=1920&q=80',
+    cover: 'https://cdn.cloudflare.steamstatic.com/steam/apps/2379780/library_600x900.jpg',
+    banner: 'https://cdn.cloudflare.steamstatic.com/steam/apps/2379780/library_hero.jpg',
     genres: ['Roguelike', 'Deckbuilder', 'Strategy'],
     dev: 'LocalThunk',
+  },
+  'ocarina of time': {
+    cover: 'https://thumbnails.libretro.com/Nintendo%20-%20Nintendo%2064/Named_Boxarts/The%20Legend%20of%20Zelda%20-%20Ocarina%20of%20Time%20(USA).png',
+    banner: 'https://upload.wikimedia.org/wikipedia/en/5/57/The_Legend_of_Zelda_Ocarina_of_Time.jpg',
+    genres: ['Action-Adventure', 'Fantasy', 'RPG'],
+    dev: 'Nintendo EAD',
+    description: 'The Legend of Zelda: Ocarina of Time follows Link in the fantasy land of Hyrule on a quest to stop the evil king Ganondorf, traveling through time and navigating dungeons.',
+  },
+  'the legend of zelda ocarina of time': {
+    cover: 'https://thumbnails.libretro.com/Nintendo%20-%20Nintendo%2064/Named_Boxarts/The%20Legend%20of%20Zelda%20-%20Ocarina%20of%20Time%20(USA).png',
+    banner: 'https://upload.wikimedia.org/wikipedia/en/5/57/The_Legend_of_Zelda_Ocarina_of_Time.jpg',
+    genres: ['Action-Adventure', 'Fantasy', 'RPG'],
+    dev: 'Nintendo EAD',
+    description: 'The Legend of Zelda: Ocarina of Time follows Link in the fantasy land of Hyrule on a quest to stop the evil king Ganondorf, traveling through time and navigating dungeons.',
+  },
+  'majoras mask': {
+    cover: 'https://thumbnails.libretro.com/Nintendo%20-%20Nintendo%2064/Named_Boxarts/The%20Legend%20of%20Zelda%20-%20Majora%27s%20Mask%20(USA).png',
+    banner: 'https://upload.wikimedia.org/wikipedia/en/6/60/The_Legend_of_Zelda_-_Majora%27s_Mask_Box_Art.jpg',
+    genres: ['Action-Adventure', 'Fantasy'],
+    dev: 'Nintendo EAD',
+  },
+  'the legend of zelda majoras mask': {
+    cover: 'https://thumbnails.libretro.com/Nintendo%20-%20Nintendo%2064/Named_Boxarts/The%20Legend%20of%20Zelda%20-%20Majora%27s%20Mask%20(USA).png',
+    banner: 'https://upload.wikimedia.org/wikipedia/en/6/60/The_Legend_of_Zelda_-_Majora%27s_Mask_Box_Art.jpg',
+    genres: ['Action-Adventure', 'Fantasy'],
+    dev: 'Nintendo EAD',
+  },
+  'breath of the wild': {
+    cover: 'https://upload.wikimedia.org/wikipedia/en/c/c6/The_Legend_of_Zelda_Breath_of_the_Wild.jpg',
+    banner: 'https://upload.wikimedia.org/wikipedia/en/c/c6/The_Legend_of_Zelda_Breath_of_the_Wild.jpg',
+    genres: ['Action-Adventure', 'Open World'],
+    dev: 'Nintendo EPD',
+  },
+  'the legend of zelda breath of the wild': {
+    cover: 'https://upload.wikimedia.org/wikipedia/en/c/c6/The_Legend_of_Zelda_Breath_of_the_Wild.jpg',
+    banner: 'https://upload.wikimedia.org/wikipedia/en/c/c6/The_Legend_of_Zelda_Breath_of_the_Wild.jpg',
+    genres: ['Action-Adventure', 'Open World'],
+    dev: 'Nintendo EPD',
+  },
+  'tears of the kingdom': {
+    cover: 'https://upload.wikimedia.org/wikipedia/en/f/fb/The_Legend_of_Zelda_Tears_of_the_Kingdom_cover.jpg',
+    banner: 'https://upload.wikimedia.org/wikipedia/en/f/fb/The_Legend_of_Zelda_Tears_of_the_Kingdom_cover.jpg',
+    genres: ['Action-Adventure', 'Open World'],
+    dev: 'Nintendo EPD',
+  },
+  'the legend of zelda tears of the kingdom': {
+    cover: 'https://upload.wikimedia.org/wikipedia/en/f/fb/The_Legend_of_Zelda_Tears_of_the_Kingdom_cover.jpg',
+    banner: 'https://upload.wikimedia.org/wikipedia/en/f/fb/The_Legend_of_Zelda_Tears_of_the_Kingdom_cover.jpg',
+    genres: ['Action-Adventure', 'Open World'],
+    dev: 'Nintendo EPD',
   },
   'grand theft auto v': {
     cover: 'https://cdn.cloudflare.steamstatic.com/steam/apps/271590/library_600x900.jpg',
@@ -203,55 +253,100 @@ async function fetchJson(url: string, timeoutMs = 4500, retries = 1): Promise<an
  */
 export const LIBRETRO_SYSTEM_MAP: Record<string, string[]> = {
   pcsx2: ['Sony - PlayStation 2'],
+  xbsx2: ['Sony - PlayStation 2'],
+  aethersx2: ['Sony - PlayStation 2'],
   ps2: ['Sony - PlayStation 2'],
+  'playstation 2': ['Sony - PlayStation 2'],
+  'sony playstation 2': ['Sony - PlayStation 2'],
   ppsspp: ['Sony - PlayStation Portable'],
   psp: ['Sony - PlayStation Portable'],
+  'playstation portable': ['Sony - PlayStation Portable'],
+  vita3k: ['Sony - PlayStation Vita', 'Sony - PlayStation Portable'],
+  psvita: ['Sony - PlayStation Vita'],
   desmume: ['Nintendo - Nintendo DS'],
   melonds: ['Nintendo - Nintendo DS'],
   ds: ['Nintendo - Nintendo DS'],
+  nds: ['Nintendo - Nintendo DS'],
+  'nintendo ds': ['Nintendo - Nintendo DS'],
   citra: ['Nintendo - Nintendo 3DS'],
+  lime3ds: ['Nintendo - Nintendo 3DS'],
+  azahar: ['Nintendo - Nintendo 3DS'],
   '3ds': ['Nintendo - Nintendo 3DS'],
+  'nintendo 3ds': ['Nintendo - Nintendo 3DS'],
   dolphin: ['Nintendo - GameCube', 'Nintendo - Wii'],
   gamecube: ['Nintendo - GameCube'],
+  'nintendo gamecube': ['Nintendo - GameCube'],
+  ngc: ['Nintendo - GameCube'],
   wii: ['Nintendo - Wii'],
+  'nintendo wii': ['Nintendo - Wii'],
   duckstation: ['Sony - PlayStation'],
   epsxe: ['Sony - PlayStation'],
   ps1: ['Sony - PlayStation'],
+  psx: ['Sony - PlayStation'],
   playstation: ['Sony - PlayStation'],
+  'sony playstation': ['Sony - PlayStation'],
   rpcs3: ['Sony - PlayStation 3'],
   ps3: ['Sony - PlayStation 3'],
+  'playstation 3': ['Sony - PlayStation 3'],
   cemu: ['Nintendo - Wii U'],
   wiiu: ['Nintendo - Wii U'],
-  ryujinx: ['Nintendo - Nintendo Switch'],
-  yuzu: ['Nintendo - Nintendo Switch'],
-  switch: ['Nintendo - Nintendo Switch'],
+  'wii u': ['Nintendo - Wii U'],
+  'nintendo wii u': ['Nintendo - Wii U'],
+  ryujinx: ['Nintendo - Nintendo Switch', 'Nintendo - Wii U', 'Nintendo - Nintendo 64'],
+  yuzu: ['Nintendo - Nintendo Switch', 'Nintendo - Wii U', 'Nintendo - Nintendo 64'],
+  suyu: ['Nintendo - Nintendo Switch', 'Nintendo - Wii U', 'Nintendo - Nintendo 64'],
+  sudachi: ['Nintendo - Nintendo Switch', 'Nintendo - Wii U', 'Nintendo - Nintendo 64'],
+  citron: ['Nintendo - Nintendo Switch', 'Nintendo - Wii U', 'Nintendo - Nintendo 64'],
+  eden: ['Nintendo - Nintendo Switch', 'Nintendo - Wii U', 'Nintendo - Nintendo 64'],
+  lichii: ['Nintendo - Nintendo Switch', 'Nintendo - Nintendo 64', 'Nintendo - GameCube', 'Nintendo - Wii U'],
+  switch: ['Nintendo - Nintendo Switch', 'Nintendo - Wii U', 'Nintendo - Nintendo 64'],
+  switch2: ['Nintendo - Nintendo Switch', 'Nintendo - Nintendo 64', 'Nintendo - GameCube', 'Nintendo - Wii U'],
+  'nintendo switch': ['Nintendo - Nintendo Switch', 'Nintendo - Wii U', 'Nintendo - Nintendo 64'],
+  'nintendo switch 2': ['Nintendo - Nintendo Switch', 'Nintendo - Nintendo 64', 'Nintendo - GameCube', 'Nintendo - Wii U'],
   dosbox: ['DOS'],
   dos: ['DOS'],
   scummvm: ['ScummVM', 'DOS'],
-  retroarch: ['DOS', 'Sony - PlayStation', 'Nintendo - Game Boy Advance', 'Nintendo - Super Nintendo Entertainment System', 'Sega - Mega Drive - Genesis'],
+  retroarch: ['DOS', 'Sony - PlayStation', 'Nintendo - Game Boy Advance', 'Nintendo - Super Nintendo Entertainment System', 'Sega - Mega Drive - Genesis', 'Nintendo - Nintendo 64'],
   mame: ['MAME', 'FBNeo - Arcade Games', 'SNK - Neo Geo'],
+  arcade: ['MAME', 'FBNeo - Arcade Games', 'SNK - Neo Geo'],
   snes9x: ['Nintendo - Super Nintendo Entertainment System'],
+  bsnes: ['Nintendo - Super Nintendo Entertainment System'],
   snes: ['Nintendo - Super Nintendo Entertainment System'],
+  'super nintendo': ['Nintendo - Super Nintendo Entertainment System'],
   fceux: ['Nintendo - Nintendo Entertainment System'],
   nestopia: ['Nintendo - Nintendo Entertainment System'],
+  mesen: ['Nintendo - Nintendo Entertainment System'],
   nes: ['Nintendo - Nintendo Entertainment System'],
   mgba: ['Nintendo - Game Boy Advance', 'Nintendo - Game Boy Color', 'Nintendo - Game Boy'],
+  vba: ['Nintendo - Game Boy Advance', 'Nintendo - Game Boy Color', 'Nintendo - Game Boy'],
   gameboy: ['Nintendo - Game Boy Advance', 'Nintendo - Game Boy Color', 'Nintendo - Game Boy'],
   gba: ['Nintendo - Game Boy Advance'],
+  'game boy advance': ['Nintendo - Game Boy Advance'],
   gbc: ['Nintendo - Game Boy Color'],
+  'game boy color': ['Nintendo - Game Boy Color'],
   gb: ['Nintendo - Game Boy'],
+  'game boy': ['Nintendo - Game Boy'],
   project64: ['Nintendo - Nintendo 64'],
+  simple64: ['Nintendo - Nintendo 64'],
+  rmg: ['Nintendo - Nintendo 64'],
+  ares: ['Nintendo - Nintendo 64', 'Nintendo - Super Nintendo Entertainment System', 'Sega - Mega Drive - Genesis'],
   n64: ['Nintendo - Nintendo 64'],
+  'nintendo 64': ['Nintendo - Nintendo 64'],
   redream: ['Sega - Dreamcast'],
   dreamcast: ['Sega - Dreamcast'],
+  'sega dreamcast': ['Sega - Dreamcast'],
   flycast: ['Sega - Dreamcast', 'Sega - Naomi'],
   xemu: ['Microsoft - Xbox'],
   xbox: ['Microsoft - Xbox'],
   xenia: ['Microsoft - Xbox 360'],
   xbox360: ['Microsoft - Xbox 360'],
+  'xbox 360': ['Microsoft - Xbox 360'],
   genesis: ['Sega - Mega Drive - Genesis'],
+  'sega genesis': ['Sega - Mega Drive - Genesis'],
   megadrive: ['Sega - Mega Drive - Genesis'],
+  'sega mega drive': ['Sega - Mega Drive - Genesis'],
   saturn: ['Sega - Saturn'],
+  'sega saturn': ['Sega - Saturn'],
   amiga: ['Commodore - Amiga'],
 };
 
@@ -274,6 +369,35 @@ function checkHeadUrl(url: string, timeoutMs = 2500): Promise<boolean> {
   });
 }
 
+const SUBTITLE_TO_FULL_TITLE: Record<string, string> = {
+  'ocarina of time': 'The Legend of Zelda - Ocarina of Time',
+  'majoras mask': "The Legend of Zelda - Majora's Mask",
+  "majora's mask": "The Legend of Zelda - Majora's Mask",
+  'breath of the wild': 'The Legend of Zelda - Breath of the Wild',
+  'tears of the kingdom': 'The Legend of Zelda - Tears of the Kingdom',
+  'wind waker': 'The Legend of Zelda - The Wind Waker',
+  'the wind waker': 'The Legend of Zelda - The Wind Waker',
+  'twilight princess': 'The Legend of Zelda - Twilight Princess',
+  'skyward sword': 'The Legend of Zelda - Skyward Sword',
+  'a link to the past': 'The Legend of Zelda - A Link to the Past',
+  'links awakening': "The Legend of Zelda - Link's Awakening",
+  "link's awakening": "The Legend of Zelda - Link's Awakening",
+  'the minish cap': 'The Legend of Zelda - The Minish Cap',
+  'minish cap': 'The Legend of Zelda - The Minish Cap',
+  'phantom hourglass': 'The Legend of Zelda - Phantom Hourglass',
+  'spirit tracks': 'The Legend of Zelda - Spirit Tracks',
+  'a link between worlds': 'The Legend of Zelda - A Link Between Worlds',
+  'symphony of the night': 'Castlevania - Symphony of the Night',
+  'aria of sorrow': 'Castlevania - Aria of Sorrow',
+  'dawn of sorrow': 'Castlevania - Dawn of Sorrow',
+  'portrait of ruin': 'Castlevania - Portrait of Ruin',
+  'order of ecclesia': 'Castlevania - Order of Ecclesia',
+  'san andreas': 'Grand Theft Auto - San Andreas',
+  'vice city': 'Grand Theft Auto - Vice City',
+  'thousand year door': 'Paper Mario - The Thousand-Year Door',
+  'the thousand year door': 'Paper Mario - The Thousand-Year Door',
+};
+
 /**
  * Generates accurate candidates for Libretro No-Intro boxart file names
  */
@@ -286,6 +410,11 @@ export function generateLibretroTitleVariants(rawTitle: string): string[] {
 
   // Known name fixes
   base = base.replace(/\bStarFox\b/i, 'Star Fox');
+
+  const normBase = base.toLowerCase().replace(/[^\w\s']/g, ' ').replace(/\s+/g, ' ').trim();
+  if (SUBTITLE_TO_FULL_TITLE[normBase]) {
+    base = SUBTITLE_TO_FULL_TITLE[normBase];
+  }
 
   const titleCase = (s: string) =>
     s.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase());
@@ -310,18 +439,23 @@ export function generateLibretroTitleVariants(rawTitle: string): string[] {
   }
 
   // The Legend of Zelda -> Legend of Zelda, The - Subtitle
-  if (/^The\s+(.+)/i.test(base)) {
-    const withoutThe = base.replace(/^The\s+/i, '');
-    if (withoutThe.includes(' - ')) {
-      const parts = withoutThe.split(' - ');
-      bases.add(`${parts[0]}, The - ${parts.slice(1).join(' - ')}`);
-    } else {
-      bases.add(`${withoutThe}, The`);
+  for (const candidateBase of Array.from(bases)) {
+    if (/^The\s+(.+)/i.test(candidateBase)) {
+      const withoutThe = candidateBase.replace(/^The\s+/i, '');
+      if (withoutThe.includes(' - ')) {
+        const parts = withoutThe.split(' - ');
+        bases.add(`${parts[0]}, The - ${parts.slice(1).join(' - ')}`);
+      } else {
+        bases.add(`${withoutThe}, The`);
+      }
     }
   }
 
   const regionSuffixes = [
     '(USA)',
+    '(USA) (Rev 1)',
+    '(USA) (Rev 2)',
+    '(USA, Europe)',
     '(USA, Australia) (En,Es)',
     '(USA, Europe) (NDSi Enhanced)',
     '(USA) (En,Fr)',
@@ -356,17 +490,23 @@ export async function lookupLibretroArtwork(
   platformOrEmuId?: string
 ): Promise<ArtworkSearchResult | null> {
   const commonSystems = [
-    'DOS',
-    'Sony - PlayStation',
-    'Sony - PlayStation 2',
-    'Nintendo - Super Nintendo Entertainment System',
+    'Nintendo - Nintendo Switch',
     'Nintendo - Nintendo 64',
+    'Nintendo - GameCube',
+    'Nintendo - Wii',
+    'Nintendo - Super Nintendo Entertainment System',
     'Nintendo - Game Boy Advance',
     'Nintendo - Nintendo DS',
+    'Nintendo - Nintendo 3DS',
+    'Sony - PlayStation',
+    'Sony - PlayStation 2',
+    'Sony - PlayStation Portable',
     'Sega - Mega Drive - Genesis',
+    'Sega - Dreamcast',
+    'DOS',
   ];
   const systems = platformOrEmuId
-    ? LIBRETRO_SYSTEM_MAP[platformOrEmuId.toLowerCase()] || commonSystems
+    ? LIBRETRO_SYSTEM_MAP[platformOrEmuId.toLowerCase().trim()] || commonSystems
     : commonSystems;
 
   const titleVariants = generateLibretroTitleVariants(titleOrClean);
@@ -401,12 +541,13 @@ export async function lookupWikipediaArtwork(cleanTitle: string): Promise<Artwor
         q
       )}&format=json&utf8=1`;
       const searchRes = await fetchJson(searchUrl, 3500);
-      const top = searchRes?.query?.search?.[0];
+      const candidates = searchRes?.query?.search;
+      const top = candidates ? pickBestWikiMatch(candidates, cleanTitle) : null;
       if (top && top.title) {
         const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(top.title)}`;
         const summaryRes = await fetchJson(summaryUrl, 3500);
         const cover = summaryRes?.originalimage?.source || summaryRes?.thumbnail?.source;
-        if (cover) {
+        if (cover && !/Disambig|Question_book|Commons-logo|Folder_Hexagonal|Edit-clear|\.svg$/i.test(cover)) {
           return {
             title: summaryRes.title || cleanTitle,
             coverUrl: cover,
@@ -451,11 +592,10 @@ export function cleanGameTitle(rawTitle: string): string {
   // Remove release tags and build markers
   t = t.replace(/\b(undub|independent|repack|fitgirl|codex|cpi|flt|skidrow|plaza|goldberg|rip|portable|setup|build\s*\d*|remake|gog|steam|x64|x86|win64|crack|cracked|trashman|legacy|venom|xenophobia|supremacy|sweetnds|ddumpers)\b/gi, ' ');
 
-  // Expand CamelCase like FatalFrame3 -> Fatal Frame 3
-  if (/^[a-z]+[A-Z0-9]/i.test(t) && !t.includes(' ')) {
-    t = t.replace(/([a-z])([A-Z])/g, '$1 $2');
-    t = t.replace(/([a-zA-Z])(\d+)/g, '$1 $2');
-  }
+  // Expand CamelCase like FatalFrame3 -> Fatal Frame 3 or OcarinaOfTime -> Ocarina Of Time
+  t = t.replace(/([a-z])([A-Z])/g, '$1 $2');
+  t = t.replace(/([a-zA-Z])(\d+)/g, '$1 $2');
+
   // Handle ', The'
   t = t.replace(/,\s*The\b/i, '');
   if (/^Legend of Zelda/i.test(t)) {
@@ -463,7 +603,13 @@ export function cleanGameTitle(rawTitle: string): string {
   }
   t = t.replace(/[-_.]/g, ' ');
   t = t.replace(/[™®:]/g, ' ');
-  return t.replace(/\s+/g, ' ').trim();
+  t = t.replace(/\s+/g, ' ').trim();
+
+  const normLookup = t.toLowerCase().replace(/[^\w\s']/g, ' ').replace(/\s+/g, ' ').trim();
+  if (SUBTITLE_TO_FULL_TITLE[normLookup]) {
+    return SUBTITLE_TO_FULL_TITLE[normLookup];
+  }
+  return t;
 }
 
 /**
@@ -473,12 +619,14 @@ export async function lookupGameArtwork(title: string, platformOrEmuId?: string)
   const cleanTitle = cleanGameTitle(title);
   if (!cleanTitle) return null;
 
-  // 1. Check known games first
-  const lowerTitle = cleanTitle.toLowerCase();
+  // 1. Check known games first (strict normalized match so short titles don't falsely match)
+  const normTitle = cleanTitle.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  const normRaw = title.toLowerCase().replace(/\.[a-z0-9]+$/i, '').replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
   for (const [key, val] of Object.entries(KNOWN_GAMES_ART)) {
-    if (lowerTitle.includes(key) || key.includes(lowerTitle)) {
+    const normKey = key.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (normTitle === normKey || normRaw === normKey) {
       return {
-        title,
+        title: cleanTitle,
         coverUrl: val.cover,
         bannerUrl: val.banner,
         genres: val.genres,
@@ -489,7 +637,7 @@ export async function lookupGameArtwork(title: string, platformOrEmuId?: string)
   }
 
   // 2. If it's an emulator or console title, prioritize authentic console databases (Libretro & Wikipedia)
-  const isEmulator = platformOrEmuId && (platformOrEmuId in LIBRETRO_SYSTEM_MAP || platformOrEmuId === 'emulator');
+  const isEmulator = platformOrEmuId && (platformOrEmuId.toLowerCase() in LIBRETRO_SYSTEM_MAP || platformOrEmuId === 'emulator');
   if (isEmulator) {
     // Check Libretro box arts repository
     const libretroArt = await lookupLibretroArtwork(cleanTitle, platformOrEmuId);
@@ -509,18 +657,24 @@ export async function lookupGameArtwork(title: string, platformOrEmuId?: string)
 
     if (res && res.items && res.items.length > 0) {
       // Find a matching item - verify similarity so unrelated hits are discarded
-      const cleanLower = cleanTitle.toLowerCase();
+      const cleanLower = cleanTitle.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
       let match = res.items.find((it: any) => {
-        const itLower = (it.name || '').toLowerCase();
-        return itLower === cleanLower || itLower.includes(cleanLower) || cleanLower.includes(itLower);
+        const itLower = (it.name || '').toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+        if (/soundtrack|ost|demo|artbook|dlc|cosmetic|pack/i.test(it.name || '') && !/soundtrack|ost|demo/i.test(cleanTitle)) {
+          return false;
+        }
+        return (
+          itLower === cleanLower ||
+          (cleanLower.length >= 6 && itLower.length >= 6 && (itLower.startsWith(cleanLower) || cleanLower.startsWith(itLower)))
+        );
       });
 
-      if (!match) {
+      if (!match && !isEmulator) {
         const first = res.items[0];
         const firstWords = (first.name || '').toLowerCase().split(/\s+/).filter((w: string) => w.length > 3);
         const cleanWords = cleanLower.split(/\s+/).filter((w: string) => w.length > 3);
         const common = cleanWords.filter((w: string) => firstWords.includes(w));
-        if (common.length >= Math.min(2, cleanWords.length) && common.length > 0) {
+        if (cleanWords.length >= 2 && common.length === cleanWords.length) {
           match = first;
         }
       }
@@ -832,7 +986,7 @@ function pickBestWikiMatch(
     }
   }
 
-  return bestCandidate;
+  return highestScore >= 15 ? bestCandidate : null;
 }
 
 export interface ScrapedGameMetadata {
@@ -861,20 +1015,38 @@ export async function scrapeEmulatorGameMetadata(
     title: cleanTitle || rawTitle,
   };
 
+  // 0. Check curated known games dictionary for exact match
+  const normClean = (cleanTitle || '').toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  const normRaw = rawTitle.toLowerCase().replace(/\.[a-z0-9]+$/i, '').replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  for (const [key, val] of Object.entries(KNOWN_GAMES_ART)) {
+    const normKey = key.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (normClean === normKey || normRaw === normKey) {
+      result.coverUrl = val.cover;
+      result.bannerUrl = val.banner;
+      result.genres = val.genres;
+      result.developer = val.dev;
+      result.publisher = val.dev;
+      if (val.description) result.description = val.description;
+      break;
+    }
+  }
+
   // 1. Check Libretro authentic box arts CDN (top priority for authentic console packaging)
-  try {
-    let libretro = await lookupLibretroArtwork(rawTitle, platformOrEmuId);
-    if (!libretro && cleanTitle && cleanTitle !== rawTitle) {
-      libretro = await lookupLibretroArtwork(cleanTitle, platformOrEmuId);
-    }
-    if (libretro && libretro.coverUrl) {
-      result.coverUrl = libretro.coverUrl;
-      result.bannerUrl = libretro.bannerUrl || libretro.coverUrl;
-      if (libretro.genres && libretro.genres.length > 0) {
-        result.genres = libretro.genres;
+  if (!result.coverUrl) {
+    try {
+      let libretro = await lookupLibretroArtwork(rawTitle, platformOrEmuId);
+      if (!libretro && cleanTitle && cleanTitle !== rawTitle) {
+        libretro = await lookupLibretroArtwork(cleanTitle, platformOrEmuId);
       }
-    }
-  } catch {}
+      if (libretro && libretro.coverUrl) {
+        result.coverUrl = libretro.coverUrl;
+        result.bannerUrl = libretro.bannerUrl || libretro.coverUrl;
+        if (libretro.genres && libretro.genres.length > 0) {
+          result.genres = libretro.genres;
+        }
+      }
+    } catch {}
+  }
 
   // 2. Query Wikipedia for synopsis, original cover, developer, publisher, and year
   try {
@@ -904,15 +1076,29 @@ export async function scrapeEmulatorGameMetadata(
     }
 
     if (topMatch && topMatch.title) {
+      const wikiCleanTitle = topMatch.title.replace(/\s*\([^)]*video game[^)]*\)$/i, '').trim();
+
+      // If ROM file only had a subtitle (e.g. "Ocarina of Time"), Wikipedia's full article title
+      // ("The Legend of Zelda: Ocarina of Time") lets us locate the official Libretro boxart!
+      if (!result.coverUrl && wikiCleanTitle) {
+        try {
+          const libretroFromWiki = await lookupLibretroArtwork(wikiCleanTitle, platformOrEmuId);
+          if (libretroFromWiki?.coverUrl) {
+            result.coverUrl = libretroFromWiki.coverUrl;
+            result.bannerUrl = libretroFromWiki.bannerUrl || libretroFromWiki.coverUrl;
+          }
+        } catch {}
+      }
+
       // 2a. Fetch Summary (Synopsis & Official Image)
       try {
         const sumUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(topMatch.title)}`;
         const sumRes = await fetchJson(sumUrl, 3800);
-        if (sumRes?.extract) {
+        if (sumRes?.extract && !result.description) {
           result.description = sumRes.extract.trim();
         }
         const wikiImage = sumRes?.originalimage?.source || sumRes?.thumbnail?.source;
-        if (wikiImage) {
+        if (wikiImage && !/Disambig|Question_book|Commons-logo|Folder_Hexagonal|Edit-clear|\.svg$/i.test(wikiImage)) {
           if (!result.coverUrl) result.coverUrl = wikiImage;
           if (!result.bannerUrl) result.bannerUrl = wikiImage;
         }
@@ -974,24 +1160,46 @@ export async function scrapeEmulatorGameMetadata(
     }
   } catch {}
 
-  // 3. Fallback to Steam Store API for HD banner or genres if missing (only if title matches)
+  // 3. Fallback to Steam Store API for HD banner or cover if missing (only if title strongly matches)
   if (!result.coverUrl || !result.bannerUrl || !result.genres) {
     try {
       const searchUrl = `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(
         cleanTitle
       )}&l=english&cc=US`;
       const res = await fetchJson(searchUrl, 3500);
-      if (res?.items?.[0]) {
-        const item = res.items[0];
-        const normItem = (item.name || '').toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+      if (res?.items?.length > 0) {
         const normTarget = cleanTitle.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
-        if (normItem.includes(normTarget) || normTarget.includes(normItem)) {
+        const item = res.items.find((it: any) => {
+          const name = it.name || '';
+          if (/soundtrack|ost|demo|artbook|dlc|cosmetic|pack/i.test(name) && !/soundtrack|ost|demo/i.test(cleanTitle)) {
+            return false;
+          }
+          const normItem = name.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+          return (
+            normItem === normTarget ||
+            (normTarget.length >= 6 && normItem.length >= 6 && (normItem.startsWith(normTarget) || normTarget.startsWith(normItem)))
+          );
+        });
+        if (item) {
           if (!result.coverUrl) {
             result.coverUrl = `https://cdn.cloudflare.steamstatic.com/steam/apps/${item.id}/library_600x900.jpg`;
           }
           if (!result.bannerUrl) {
             result.bannerUrl = `https://cdn.cloudflare.steamstatic.com/steam/apps/${item.id}/library_hero.jpg`;
           }
+        }
+      }
+    } catch {}
+  }
+
+  // 4. Final fallback: Web Box Art search if cover is still missing
+  if (!result.coverUrl) {
+    try {
+      const webArt = await lookupWebArtwork(`${cleanTitle} ${platformOrEmuId || ''}`.trim());
+      if (webArt?.coverUrl) {
+        result.coverUrl = webArt.coverUrl;
+        if (!result.bannerUrl) {
+          result.bannerUrl = webArt.bannerUrl || webArt.coverUrl;
         }
       }
     } catch {}

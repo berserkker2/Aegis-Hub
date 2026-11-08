@@ -60,9 +60,19 @@ export const SettingsWindow: React.FC = () => {
       setSettings(newSettings);
     });
 
+    const unsubEmus = window.api?.onEmulatorsUpdated?.((newEmus) => {
+      setEmulators(newEmus);
+    });
+
+    const unsubGames = window.api?.onGamesUpdated?.((newGames) => {
+      setHiddenGamesCount(newGames.filter((g: Game) => g.hidden).length);
+    });
+
     return () => {
       if (unsubTab) unsubTab();
       if (unsubSettings) unsubSettings();
+      if (unsubEmus) unsubEmus();
+      if (unsubGames) unsubGames();
     };
   }, []);
 
@@ -93,7 +103,15 @@ export const SettingsWindow: React.FC = () => {
   };
 
   const handleUpdateEmulator = (updated: EmulatorConfig) => {
-    setEmulators((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+    setEmulators((prev) => {
+      const idx = prev.findIndex((e) => e.id === updated.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = updated;
+        return next;
+      }
+      return [...prev, updated];
+    });
     if (window.api?.updateEmulatorConfig) {
       window.api.updateEmulatorConfig(updated);
     }

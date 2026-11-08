@@ -15,6 +15,7 @@ import { RecommendedView } from './components/RecommendedView';
 import { PulseView } from './components/PulseView';
 import { BigPictureView } from './components/BigPictureView';
 import { Game, GamePlatform, LauncherSettings, EmulatorConfig, StoreAccount } from './types/game';
+import { checkIsStartSelectCombo } from './utils/gamepadUtils';
 
 export const App: React.FC = () => {
   const [games, setGames] = useState<Game[]>([]);
@@ -58,8 +59,15 @@ export const App: React.FC = () => {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'defaults' | 'stores' | 'tools' | 'emulation' | 'apps' | 'about'>('defaults');
   const [isBigPictureMode, setIsBigPictureMode] = useState(false);
+  const lastBigPictureToggleTimeRef = useRef<number>(0);
+  const TOGGLE_COOLDOWN_MS = 1500;
 
   const handleEnterBigPicture = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastBigPictureToggleTimeRef.current < TOGGLE_COOLDOWN_MS) {
+      return;
+    }
+    lastBigPictureToggleTimeRef.current = now;
     setIsBigPictureMode(true);
     if (window.api?.setFullscreen) {
       await window.api.setFullscreen(true);
@@ -67,6 +75,11 @@ export const App: React.FC = () => {
   }, []);
 
   const handleExitBigPicture = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastBigPictureToggleTimeRef.current < TOGGLE_COOLDOWN_MS) {
+      return;
+    }
+    lastBigPictureToggleTimeRef.current = now;
     setIsBigPictureMode(false);
     if (window.api?.setFullscreen) {
       await window.api.setFullscreen(false);
@@ -259,6 +272,14 @@ export const App: React.FC = () => {
       });
     }
 
+    // Subscribe to emulator configuration updates across independent windows
+    let unsubEmusUpdated: (() => void) | undefined;
+    if (window.api?.onEmulatorsUpdated) {
+      unsubEmusUpdated = window.api.onEmulatorsUpdated((updatedEmus) => {
+        setEmulators(updatedEmus);
+      });
+    }
+
     return () => {
       if (unsubGameStatus) unsubGameStatus();
       if (unsubSettings) unsubSettings();
@@ -266,6 +287,41 @@ export const App: React.FC = () => {
       if (unsubGamesUpdated) unsubGamesUpdated();
       if (unsubAccountsUpdated) unsubAccountsUpdated();
       if (unsubRestoreBigPic) unsubRestoreBigPic();
+      if (unsubEmusUpdated) unsubEmusUpdated();
+    };
+  }, []);
+
+  // Native window focus state tracking
+  const isWindowFocusedRef = useRef<boolean>(true);
+
+  useEffect(() => {
+    if (window.api?.isMainWindowFocused) {
+      window.api.isMainWindowFocused().then((f) => {
+        isWindowFocusedRef.current = f;
+      });
+    }
+
+    let unsubFocus: (() => void) | undefined;
+    if (window.api?.onMainWindowFocus) {
+      unsubFocus = window.api.onMainWindowFocus((focused) => {
+        isWindowFocusedRef.current = focused;
+      });
+    }
+
+    const handleFocus = () => {
+      isWindowFocusedRef.current = true;
+    };
+    const handleBlur = () => {
+      isWindowFocusedRef.current = false;
+    };
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      if (unsubFocus) unsubFocus();
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('blur', handleBlur);
     };
   }, []);
 
@@ -280,9 +336,13 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Global F11 / Alt+Enter key toggle for Big Picture mode
+  // Global F11 / Alt+Enter key toggle for Big Picture mode (strictly when window is focused)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const isFocused = isWindowFocusedRef.current && (typeof document === 'undefined' || !document.hidden);
+      if (!isFocused) {
+        return;
+      }
       if (e.key === 'F11' || (e.altKey && e.key === 'Enter')) {
         e.preventDefault();
         if (isBigPictureMode) {
@@ -294,10 +354,11 @@ export const App: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isBigPictureMode]);
+  }, [isBigPictureMode, handleEnterBigPicture, handleExitBigPicture]);
 
   // Controller / Gamepad shortcut to enter Big Picture mode from Desktop
-  // Uses a lightweight 100ms interval instead of 60-144Hz requestAnimationFrame to keep desktop scrolling silky smooth
+  // Requires BOTH Start AND Select pressed simultaneously (Plus and Minus on Switch).
+  // Strictly activates ONLY when the application window currently has focus.
   useEffect(() => {
     if (isBigPictureMode) return;
 
@@ -305,34 +366,40 @@ export const App: React.FC = () => {
     let intervalId: number | null = null;
 
     const checkGamepad = () => {
+      // Strictly ignore when the app window does not have focus or is hidden in the background
+      const isFocused = isWindowFocusedRef.current && (typeof document === 'undefined' || !document.hidden);
+      if (!isFocused) {
+        wasPressed = false;
+        return;
+      }
+
       const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
       let isPressedNow = false;
 
       for (const gp of gamepads) {
-        if (!gp || !gp.connected) continue;
-        const b = gp.buttons;
-        // Button 16: Guide / Home button
-        const guidePressed = Boolean(b[16]?.pressed);
-        // Button 9: Start / Menu / Options
-        const startPressed = Boolean(b[9]?.pressed);
-        // Button 8: Select / Back / View
-        const selectPressed = Boolean(b[8]?.pressed);
-
-        if (guidePressed || startPressed || (selectPressed && startPressed)) {
+        if (gp && checkIsStartSelectCombo(gp)) {
           isPressedNow = true;
           break;
         }
       }
 
-      if (isPressedNow && !wasPressed) {
-        handleEnterBigPicture();
+      if (isPressedNow) {
+        if (!wasPressed) {
+          wasPressed = true;
+          handleEnterBigPicture();
+        }
+      } else {
+        wasPressed = false;
       }
-      wasPressed = isPressedNow;
+    };
+
+    const handleWindowBlur = () => {
+      wasPressed = false;
     };
 
     const startPolling = () => {
       if (intervalId === null) {
-        intervalId = window.setInterval(checkGamepad, 100);
+        intervalId = window.setInterval(checkGamepad, 30);
       }
     };
 
@@ -345,15 +412,17 @@ export const App: React.FC = () => {
       }
     };
 
-    // Start immediately in case a controller is already connected, or wait for gamepadconnected
+    // Start polling if controller connected
     startPolling();
     window.addEventListener('gamepadconnected', startPolling);
     window.addEventListener('gamepaddisconnected', stopPollingIfNone);
+    window.addEventListener('blur', handleWindowBlur);
 
     return () => {
       if (intervalId !== null) window.clearInterval(intervalId);
       window.removeEventListener('gamepadconnected', startPolling);
       window.removeEventListener('gamepaddisconnected', stopPollingIfNone);
+      window.removeEventListener('blur', handleWindowBlur);
     };
   }, [isBigPictureMode, handleEnterBigPicture]);
 
@@ -755,7 +824,7 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleScrapeEmulators = async () => {
+  const handleScrapeEmulators = async (emulatorId?: string, forceRefresh = true) => {
     if (!window.api?.scrapeAllEmulatorsMetadata) return;
     setIsScrapingEmulators(true);
     setScrapingProgress(null);
@@ -768,7 +837,7 @@ export const App: React.FC = () => {
     }
 
     try {
-      const res = await window.api.scrapeAllEmulatorsMetadata();
+      const res = await window.api.scrapeAllEmulatorsMetadata({ emulatorId, forceRefresh });
       if (res && res.games) {
         setGames([...res.games]);
         showToast(`Metadata & covers updated for ${res.updatedCount} of ${res.totalCount} emulated games!`);
@@ -835,6 +904,7 @@ export const App: React.FC = () => {
     if (window.api?.deleteEmulatorConfig) {
       await window.api.deleteEmulatorConfig(emulatorId);
       setEmulators((prev) => prev.filter((e) => e.id !== emulatorId));
+      setGames((prev) => prev.filter((g) => !(g.platform === 'emulator' && g.storeId === emulatorId)));
       showToast('Removed emulator instance.');
     }
   };
@@ -1010,11 +1080,14 @@ export const App: React.FC = () => {
                 onToggleHidden={handleToggleHidden}
                 onLaunchEmulator={handleLaunchEmulator}
                 onScanEmulators={handleScanEmulators}
+                onScrapeEmulators={handleScrapeEmulators}
                 onUpdateEmulator={handleUpdateEmulator}
                 onDuplicateEmulator={handleDuplicateEmulator}
                 onDeleteEmulator={handleDeleteEmulator}
                 onOpenSettingsTab={handleOpenSettingsTab}
                 isScanning={isScanningEmulators}
+                isScraping={isScrapingEmulators}
+                scrapingProgress={scrapingProgress}
               />
             ) : (
               <>

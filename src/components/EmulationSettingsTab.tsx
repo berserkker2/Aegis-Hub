@@ -19,7 +19,8 @@ import {
   Sparkles
 } from 'lucide-react';
 import { EmulatorConfig } from '../types/game';
-import { SYSTEM_DEFINITIONS, SystemDefinition } from '../utils/emulatorSystems';
+import { SYSTEM_DEFINITIONS, SystemDefinition, getSystemLogo } from '../utils/emulatorSystems';
+import { EmulatorSettingsModal } from './EmulatorSettingsModal';
 
 interface EmulationSettingsTabProps {
   emulators: EmulatorConfig[];
@@ -44,14 +45,26 @@ export const EmulationSettingsTab: React.FC<EmulationSettingsTabProps> = ({
   const [downloadNotice, setDownloadNotice] = useState<{ id: string; message: string; success: boolean } | null>(null);
   const [expandedSystemKey, setExpandedSystemKey] = useState<string | null>(null);
   const [selectedSubEmu, setSelectedSubEmu] = useState<Record<string, string>>({}); // systemKey -> emulatorId
-  const [isAddingCustom, setIsAddingCustom] = useState(false);
-  const [customName, setCustomName] = useState('');
-  const [customConsole, setCustomConsole] = useState('');
-  const [customSystemKey, setCustomSystemKey] = useState('retroarch');
-  const [customExe, setCustomExe] = useState('');
-  const [customArgs, setCustomArgs] = useState('%ROM%');
-  const [customExts, setCustomExts] = useState('.iso, .bin, .rom');
-  const [customRomFolders, setCustomRomFolders] = useState<string[]>([]);
+  const [editingCustomEmulator, setEditingCustomEmulator] = useState<EmulatorConfig | null>(null);
+
+  const handleAddNewCustom = () => {
+    const newConfig: EmulatorConfig = {
+      id: `custom_emu_${Date.now()}`,
+      name: 'Custom Emulator Instance',
+      shortName: 'Custom',
+      consoleName: 'Retro System',
+      consoleCategory: 'other',
+      installed: false,
+      romPaths: [],
+      gamesCount: 0,
+      color: 'text-violet-400',
+      badgeBg: 'bg-violet-500/15 border-violet-500/30 text-violet-300',
+      isCustom: true,
+      enabled: true,
+      systemKey: 'custom',
+    };
+    setEditingCustomEmulator(newConfig);
+  };
 
   // Find matching emulator configs for a system
   const getEmusForSystem = (system: SystemDefinition): EmulatorConfig[] => {
@@ -206,43 +219,6 @@ export const EmulationSettingsTab: React.FC<EmulationSettingsTabProps> = ({
     });
   };
 
-  // Custom Emulator Creation
-  const handleSaveCustomEmulator = () => {
-    if (!customName.trim()) return;
-    const sysDef = SYSTEM_DEFINITIONS.find((s) => s.systemKey === customSystemKey);
-    const newCustom: EmulatorConfig = {
-      id: `custom_${Date.now()}`,
-      name: customName.trim(),
-      shortName: customName.trim().slice(0, 10),
-      consoleName: customConsole.trim() || 'Custom System',
-      consoleCategory: sysDef?.category || 'other',
-      systemKey: customSystemKey,
-      executablePath: customExe.trim() || undefined,
-      installed: Boolean(customExe.trim()),
-      romPaths: customRomFolders,
-      gamesCount: 0,
-      color: 'text-violet-400',
-      badgeBg: 'bg-violet-500/15 border-violet-500/30 text-violet-300',
-      customArgs: customArgs.trim() || '%ROM%',
-      customExtensions: customExts
-        .split(',')
-        .map((x) => x.trim().toLowerCase())
-        .filter(Boolean),
-      isCustom: true,
-      enabled: true,
-    };
-
-    if (onUpdateEmulator) {
-      onUpdateEmulator(newCustom);
-    }
-
-    setIsAddingCustom(false);
-    setCustomName('');
-    setCustomConsole('');
-    setCustomExe('');
-    setCustomRomFolders([]);
-  };
-
   const customEmulators = emulators.filter((e) => e.isCustom);
 
   return (
@@ -290,7 +266,7 @@ export const EmulationSettingsTab: React.FC<EmulationSettingsTabProps> = ({
 
           <button
             type="button"
-            onClick={() => setIsAddingCustom(true)}
+            onClick={handleAddNewCustom}
             className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition"
           >
             <Plus className="w-3.5 h-3.5 text-violet-400" />
@@ -644,156 +620,100 @@ export const EmulationSettingsTab: React.FC<EmulationSettingsTabProps> = ({
       {/* Custom Emulators List */}
       {customEmulators.length > 0 && (
         <div className="space-y-3 pt-4 border-t border-slate-800">
-          <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-            <span>Custom User Emulators ({customEmulators.length})</span>
-          </h4>
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <span>Custom User Emulators ({customEmulators.length})</span>
+            </h4>
+            <button
+              type="button"
+              onClick={handleAddNewCustom}
+              className="px-2.5 py-1 rounded-lg bg-violet-600/20 hover:bg-violet-600/30 text-violet-300 border border-violet-500/30 text-xs font-medium flex items-center gap-1 transition"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Custom</span>
+            </button>
+          </div>
 
           <div className="space-y-2">
-            {customEmulators.map((custom) => (
-              <div
-                key={custom.id}
-                className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-3"
-              >
-                <div>
-                  <h5 className="text-xs font-bold text-white">{custom.name}</h5>
-                  <p className="text-[11px] text-slate-400 mt-0.5 font-mono">
-                    {custom.executablePath || 'No executable path'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleBrowseExecutable(custom)}
-                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium"
+            {customEmulators.map((custom) => {
+              const customLogo = custom.customLogoUrl || getSystemLogo(custom.systemKey || custom.id || custom.consoleName);
+              return (
+                <div
+                  key={custom.id}
+                  className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-3 hover:border-slate-700 transition"
+                >
+                  <div
+                    className="min-w-0 flex-1 cursor-pointer flex items-center gap-3"
+                    onClick={() => setEditingCustomEmulator(custom)}
                   >
-                    Browse .exe
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (onDeleteEmulator && window.confirm(`Delete custom emulator "${custom.name}"?`)) {
-                        onDeleteEmulator(custom.id);
-                      }
-                    }}
-                    className="p-1.5 rounded-lg bg-red-950/40 hover:bg-red-900/50 text-red-400 transition"
-                    title="Delete custom emulator"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                    <div className="w-14 h-9 px-1.5 py-0.5 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center shrink-0 shadow-sm">
+                      <img
+                        src={customLogo}
+                        alt={custom.name}
+                        className="max-h-7 max-w-full object-contain filter drop-shadow(0 0 4px rgba(255, 255, 255, 0.4))"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <h5 className="text-xs font-bold text-white hover:text-violet-300 transition truncate">
+                          {custom.name}
+                        </h5>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-violet-950/60 border border-violet-500/30 text-violet-300 shrink-0">
+                          {custom.consoleName}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-mono shrink-0">
+                          {custom.gamesCount || 0} ROMs
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5 font-mono truncate">
+                        {custom.executablePath || 'No executable path'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setEditingCustomEmulator(custom)}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium flex items-center gap-1.5 transition"
+                    >
+                      <Sliders className="w-3.5 h-3.5 text-violet-400" />
+                      <span>Configure</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onDeleteEmulator && window.confirm(`Delete custom emulator "${custom.name}"?`)) {
+                          onDeleteEmulator(custom.id);
+                        }
+                      }}
+                      className="p-1.5 rounded-lg bg-red-950/40 hover:bg-red-900/50 text-red-400 transition"
+                      title="Delete custom emulator"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Add Custom Emulator Modal / Overlay */}
-      {isAddingCustom && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-sm font-bold text-white">Add Custom Emulator / System</h3>
-              <button
-                type="button"
-                onClick={() => setIsAddingCustom(false)}
-                className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">Emulator Name</label>
-                <input
-                  type="text"
-                  value={customName}
-                  onChange={(e) => setCustomName(e.target.value)}
-                  placeholder="e.g. Model 2 Emulator, VisualBoyAdvance, etc."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">Console / System Name</label>
-                <input
-                  type="text"
-                  value={customConsole}
-                  onChange={(e) => setCustomConsole(e.target.value)}
-                  placeholder="e.g. Sega Model 2, Arcade, etc."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">System Logo Icon</label>
-                <select
-                  value={customSystemKey}
-                  onChange={(e) => setCustomSystemKey(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none"
-                >
-                  {SYSTEM_DEFINITIONS.map((s) => (
-                    <option key={s.systemKey} value={s.systemKey}>
-                      {s.name} ({s.shortName})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">Executable Path (.exe)</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={customExe}
-                    onChange={(e) => setCustomExe(e.target.value)}
-                    placeholder="C:\Path\To\Emulator.exe"
-                    className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!window.api?.selectFile) return;
-                      const f = await window.api.selectFile([{ name: 'Executables (*.exe)', extensions: ['exe'] }]);
-                      if (f) setCustomExe(f);
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-slate-800 text-xs font-semibold text-slate-200"
-                  >
-                    Browse
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">Supported File Extensions</label>
-                <input
-                  type="text"
-                  value={customExts}
-                  onChange={(e) => setCustomExts(e.target.value)}
-                  placeholder=".iso, .bin, .cue, .zip"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none font-mono"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={() => setIsAddingCustom(false)}
-                className="px-4 py-1.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveCustomEmulator}
-                className="px-4 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold shadow"
-              >
-                Save Emulator
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Custom Emulator Modal */}
+      {editingCustomEmulator && (
+        <EmulatorSettingsModal
+          emulator={editingCustomEmulator}
+          isOpen={Boolean(editingCustomEmulator)}
+          onClose={() => setEditingCustomEmulator(null)}
+          onSave={(updated) => {
+            if (onUpdateEmulator) onUpdateEmulator(updated);
+            setEditingCustomEmulator(null);
+          }}
+          onDelete={(id) => {
+            if (onDeleteEmulator) onDeleteEmulator(id);
+            setEditingCustomEmulator(null);
+          }}
+        />
       )}
     </div>
   );

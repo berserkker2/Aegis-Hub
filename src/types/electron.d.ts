@@ -74,7 +74,7 @@ declare global {
       openExternal: (url: string) => Promise<boolean>;
       getEmulators: () => Promise<EmulatorConfig[]>;
       scanEmulators: () => Promise<{ emulators: EmulatorConfig[]; games: Game[] }>;
-      scrapeAllEmulatorsMetadata: () => Promise<{ updatedCount: number; totalCount: number; games: Game[] }>;
+      scrapeAllEmulatorsMetadata: (options?: { emulatorId?: string; forceRefresh?: boolean }) => Promise<{ updatedCount: number; totalCount: number; games: Game[] }>;
       scrapeSingleGameMetadata: (gameId: string) => Promise<{ success: boolean; game?: Game; games?: Game[]; message?: string }>;
       onScraperProgress: (callback: (data: { current: number; total: number; gameTitle: string; coverUrl?: string }) => void) => () => void;
       launchEmulator: (emulatorId: string) => Promise<{ success: boolean; message?: string }>;
@@ -120,7 +120,10 @@ declare global {
       onSetSettingsTab: (callback: (tab: string) => void) => () => void;
       onGamesUpdated: (callback: (games: Game[]) => void) => () => void;
       onStoreAccountsUpdated: (callback: (accounts: StoreAccount[]) => void) => () => void;
+      onEmulatorsUpdated: (callback: (emulators: EmulatorConfig[]) => void) => () => void;
       onRestoreBigPicture: (callback: () => void) => () => void;
+      isMainWindowFocused: () => Promise<boolean>;
+      onMainWindowFocus: (callback: (focused: boolean) => void) => () => void;
     };
   }
 }

@@ -959,10 +959,10 @@ export const BigPictureView: React.FC<BigPictureViewProps> = ({
     // Count games per system
     emulatedGames.forEach((g) => {
       const emu = emulators.find((e) => e.id === g.storeId);
-      let key = emu?.systemKey || g.storeId || 'other';
+      let key = (emu?.systemKey && emu.systemKey !== 'custom') ? emu.systemKey : (g.storeId || 'other');
       let name = emu?.consoleName || emu?.name || g.storeId || 'Retro System';
       let shortName = emu?.shortName || key.toUpperCase();
-      let logo = getSystemLogo(emu?.systemKey || emu?.consoleName || g.storeId || '');
+      let logo = emu?.customLogoUrl || getSystemLogo(emu?.systemKey || emu?.consoleName || g.storeId || '');
 
       if (!emu) {
         const tagMatch = g.tags?.find((t) => getSystemDefinition(t));
@@ -984,13 +984,13 @@ export const BigPictureView: React.FC<BigPictureViewProps> = ({
 
     // Also include configured/installed emulators from settings even if count is 0
     emulators.forEach((emu) => {
-      const key = emu.systemKey || emu.id;
+      const key = (emu.systemKey && emu.systemKey !== 'custom') ? emu.systemKey : emu.id;
       if (!map.has(key)) {
         map.set(key, {
           id: key,
           name: emu.consoleName || emu.name,
           shortName: emu.shortName || key.toUpperCase(),
-          logo: getSystemLogo(emu.systemKey || emu.consoleName || emu.id),
+          logo: emu.customLogoUrl || getSystemLogo(emu.systemKey || emu.consoleName || emu.id),
           count: 0,
           systemKey: key,
         });
@@ -2374,6 +2374,7 @@ export const BigPictureView: React.FC<BigPictureViewProps> = ({
     onActionY: handleGamepadActionY,
     onPrevTab: handleGamepadPrevTab,
     onNextTab: handleGamepadNextTab,
+    onToggleBigPicture: onExitBigPicture,
     onStart: () => {
       if (isVirtualKeyboardOpen) {
         playNavSelectSound();

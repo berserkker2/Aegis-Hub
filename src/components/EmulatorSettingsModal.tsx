@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   FolderOpen,
@@ -12,10 +12,12 @@ import {
   Copy,
   Terminal,
   Sparkles,
-  RotateCcw
+  RotateCcw,
+  Layers
 } from 'lucide-react';
 import { EmulatorConfig } from '../types/game';
 import { getEmulatorDefaultBanner } from '../utils/emulatorArtwork';
+import { SYSTEM_DEFINITIONS, getSystemLogo } from '../utils/emulatorSystems';
 
 interface EmulatorSettingsModalProps {
   emulator: EmulatorConfig;
@@ -37,20 +39,63 @@ export const EmulatorSettingsModal: React.FC<EmulatorSettingsModalProps> = ({
   if (!isOpen) return null;
 
   const defaultBanner = getEmulatorDefaultBanner(emulator.id, emulator.consoleName);
+  const standardCategories = ['sony', 'nintendo', 'sega', 'microsoft', 'other'];
 
   const [name, setName] = useState(emulator.name || '');
   const [consoleName, setConsoleName] = useState(emulator.consoleName || '');
-  const [consoleCategory, setConsoleCategory] = useState<'sony' | 'nintendo' | 'sega' | 'microsoft' | 'other'>(
-    emulator.consoleCategory || 'sony'
-  );
+  const [consoleCategory, setConsoleCategory] = useState<string>(() => {
+    const cat = emulator.consoleCategory || 'sony';
+    return standardCategories.includes(cat) ? cat : 'custom';
+  });
+  const [customBrandName, setCustomBrandName] = useState<string>(() => {
+    const cat = emulator.consoleCategory || '';
+    return !standardCategories.includes(cat) && cat !== 'custom' ? cat : '';
+  });
+  const [systemKey, setSystemKey] = useState<string>(emulator.systemKey || 'custom');
   const [executablePath, setExecutablePath] = useState(emulator.executablePath || '');
   const [romPaths, setRomPaths] = useState<string[]>(emulator.romPaths || []);
   const [thumbnailUrl, setThumbnailUrl] = useState(emulator.thumbnailUrl || '');
+  const [customLogoUrl, setCustomLogoUrl] = useState(emulator.customLogoUrl || '');
   const [customArgs, setCustomArgs] = useState(emulator.customArgs || '');
   const [customExtensions, setCustomExtensions] = useState(
     (emulator.customExtensions && emulator.customExtensions.join(', ')) || ''
   );
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    setName(emulator.name || '');
+    setConsoleName(emulator.consoleName || '');
+    const cat = emulator.consoleCategory || 'sony';
+    if (standardCategories.includes(cat)) {
+      setConsoleCategory(cat);
+      setCustomBrandName('');
+    } else {
+      setConsoleCategory('custom');
+      setCustomBrandName(cat === 'custom' ? '' : cat);
+    }
+    setSystemKey(emulator.systemKey || 'custom');
+    setExecutablePath(emulator.executablePath || '');
+    setRomPaths(emulator.romPaths || []);
+    setThumbnailUrl(emulator.thumbnailUrl || '');
+    setCustomLogoUrl(emulator.customLogoUrl || '');
+    setCustomArgs(emulator.customArgs || '');
+    setCustomExtensions((emulator.customExtensions && emulator.customExtensions.join(', ')) || '');
+  }, [emulator]);
+
+  const handleSystemChange = (newKey: string) => {
+    setSystemKey(newKey);
+    const sysDef = SYSTEM_DEFINITIONS.find((s) => s.systemKey === newKey);
+    if (sysDef) {
+      if (!consoleName || consoleName === 'Retro System' || consoleName === 'Custom System') {
+        setConsoleName(sysDef.name);
+      }
+      setConsoleCategory(sysDef.category);
+      setCustomBrandName('');
+      if (!customExtensions && sysDef.defaultExtensions && sysDef.defaultExtensions.length > 0) {
+        setCustomExtensions(sysDef.defaultExtensions.join(', '));
+      }
+    }
+  };
 
   // File picker for Executable
   const handleBrowseExecutable = async () => {
@@ -96,6 +141,7 @@ export const EmulatorSettingsModal: React.FC<EmulatorSettingsModalProps> = ({
     if (!window.api?.selectFile) return;
     const file = await window.api.selectFile([
       { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'svg'] },
+      { name: 'All Files', extensions: ['*'] },
     ]);
     if (file) {
       if (window.api.toMediaUrl) {
@@ -111,6 +157,27 @@ export const EmulatorSettingsModal: React.FC<EmulatorSettingsModalProps> = ({
     setThumbnailUrl('');
   };
 
+  // Image file picker for System Logo
+  const handleBrowseLogo = async () => {
+    if (!window.api?.selectFile) return;
+    const file = await window.api.selectFile([
+      { name: 'Images (PNG/WebP/SVG/JPG)', extensions: ['png', 'webp', 'svg', 'jpg', 'jpeg'] },
+      { name: 'All Files', extensions: ['*'] },
+    ]);
+    if (file) {
+      if (window.api.toMediaUrl) {
+        const mediaUrl = await window.api.toMediaUrl(file);
+        setCustomLogoUrl(mediaUrl);
+      } else {
+        setCustomLogoUrl(file);
+      }
+    }
+  };
+
+  const handleResetLogo = () => {
+    setCustomLogoUrl('');
+  };
+
   const handleSave = () => {
     setIsSaving(true);
     const exts = customExtensions
@@ -123,17 +190,25 @@ export const EmulatorSettingsModal: React.FC<EmulatorSettingsModalProps> = ({
       .map((p) => p.trim())
       .filter((p) => p.length > 0);
 
+    const finalCategory = consoleCategory === 'custom'
+      ? (customBrandName.trim() || 'custom')
+      : consoleCategory;
+
     const updated: EmulatorConfig = {
       ...emulator,
       name: name.trim() || emulator.name,
       consoleName: consoleName.trim() || emulator.consoleName,
-      consoleCategory,
+      consoleCategory: finalCategory,
+      systemKey: systemKey || emulator.systemKey || 'custom',
       executablePath: executablePath.trim(),
       installed: Boolean(executablePath.trim()),
       romPaths: validRomPaths,
       thumbnailUrl: thumbnailUrl.trim() || undefined,
+      customLogoUrl: customLogoUrl.trim() || undefined,
       customArgs: customArgs.trim() || undefined,
       customExtensions: exts.length > 0 ? exts : undefined,
+      isCustom: emulator.isCustom !== undefined ? emulator.isCustom : true,
+      enabled: emulator.enabled !== undefined ? emulator.enabled : true,
     };
 
     onSave(updated);
@@ -162,6 +237,7 @@ export const EmulatorSettingsModal: React.FC<EmulatorSettingsModalProps> = ({
   };
 
   const activeImage = thumbnailUrl || defaultBanner;
+  const activeLogo = customLogoUrl || getSystemLogo(systemKey || emulator.systemKey || emulator.id || emulator.consoleName);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
@@ -258,7 +334,70 @@ export const EmulatorSettingsModal: React.FC<EmulatorSettingsModalProps> = ({
             </div>
           </div>
 
-          {/* 2. Emulator Name & Console */}
+          {/* 2. System Logo */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-violet-400" />
+                System Logo (Brand & Console Badge)
+              </span>
+              <span className="text-[10px] text-slate-400 normal-case">
+                Appears on shelf cards, system selector and headers
+              </span>
+            </label>
+
+            <div className="flex flex-col sm:flex-row gap-4 items-center bg-slate-950/70 p-3.5 rounded-xl border border-slate-800/80">
+              {/* Logo preview */}
+              <div className="w-full sm:w-48 h-24 rounded-lg border border-slate-700 bg-slate-900/90 flex items-center justify-center p-3 shrink-0 shadow-md">
+                <img
+                  src={activeLogo}
+                  alt="System Logo"
+                  className="max-h-16 max-w-full object-contain filter drop-shadow(0 0 8px rgba(255, 255, 255, 0.4))"
+                />
+              </div>
+
+              {/* Actions & Logo URL */}
+              <div className="flex-1 space-y-2.5 w-full">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleBrowseLogo}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold shadow-sm transition"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5" />
+                    <span>Browse Logo File...</span>
+                  </button>
+
+                  {customLogoUrl && (
+                    <button
+                      type="button"
+                      onClick={handleResetLogo}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition"
+                      title="Reset to default preset logo"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Preset Logo</span>
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <input
+                    type="text"
+                    value={customLogoUrl}
+                    onChange={(e) => setCustomLogoUrl(e.target.value)}
+                    placeholder="Paste web Logo URL or local file path (PNG, SVG, WebP)..."
+                    className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Transparent PNG or SVG recommended. Leave empty to use the system preset logo.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Emulator Name & Console */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1.5">
@@ -268,7 +407,7 @@ export const EmulatorSettingsModal: React.FC<EmulatorSettingsModalProps> = ({
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. PCSX2 (Main) or PCSX2 - Silent Hill"
+                placeholder="e.g. PCSX2 (Main) or Model 2 Emulator"
                 className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-violet-500"
               />
             </div>
@@ -281,9 +420,64 @@ export const EmulatorSettingsModal: React.FC<EmulatorSettingsModalProps> = ({
                 type="text"
                 value={consoleName}
                 onChange={(e) => setConsoleName(e.target.value)}
-                placeholder="e.g. PlayStation 2, Nintendo Switch"
+                placeholder="e.g. PlayStation 2, Sega Model 2"
                 className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-violet-500"
               />
+            </div>
+          </div>
+
+          {/* System Platform & Console Brand */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                <span>System Platform / Defaults</span>
+                <span className="text-[10px] text-slate-500">Preset Logo & Defaults</span>
+              </label>
+              <select
+                value={systemKey}
+                onChange={(e) => handleSystemChange(e.target.value)}
+                style={{ colorScheme: 'dark' }}
+                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-violet-500 cursor-pointer"
+              >
+                <option value="custom">Custom / Standalone System</option>
+                {SYSTEM_DEFINITIONS.map((s) => (
+                  <option key={s.systemKey} value={s.systemKey}>
+                    {s.name} ({s.shortName})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                <span>Console Brand</span>
+                <span className="text-[10px] text-slate-500">Platform family</span>
+              </label>
+              <select
+                value={consoleCategory}
+                onChange={(e) => setConsoleCategory(e.target.value)}
+                style={{ colorScheme: 'dark' }}
+                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-violet-500 cursor-pointer"
+              >
+                <option value="sony">Sony / PlayStation</option>
+                <option value="nintendo">Nintendo</option>
+                <option value="sega">Sega</option>
+                <option value="microsoft">Microsoft / Xbox</option>
+                <option value="other">Arcade / PC / Other</option>
+                <option value="custom">Custom Brand...</option>
+              </select>
+
+              {consoleCategory === 'custom' && (
+                <div className="mt-2 animate-fade-in">
+                  <input
+                    type="text"
+                    value={customBrandName}
+                    onChange={(e) => setCustomBrandName(e.target.value)}
+                    placeholder="Enter custom brand (e.g. Atari, SNK, NEC...)"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
+                  />
+                </div>
+              )}
             </div>
           </div>
 

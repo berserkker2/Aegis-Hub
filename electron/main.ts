@@ -326,6 +326,7 @@ function createWindow() {
   mainWindow.on('resize', debouncedSave);
   mainWindow.on('move', debouncedSave);
   mainWindow.on('focus', () => {
+    mainWindow?.webContents.send('main-window-focused', true);
     try {
       const currentGames = store.getGames();
       const { updatedCount, games } = steamPlaytimeService.syncGamesPlaytime(currentGames, store);
@@ -336,6 +337,9 @@ function createWindow() {
     } catch (err) {
       console.warn('Focus steam playtime sync failed:', err);
     }
+  });
+  mainWindow.on('blur', () => {
+    mainWindow?.webContents.send('main-window-focused', false);
   });
   mainWindow.on('close', (event) => {
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isFullScreen() && !isInBigPicture) {
@@ -1025,6 +1029,10 @@ ipcMain.on('app-quit', () => {
 ipcMain.handle('is-maximized', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
   return win?.isMaximized() || false;
+});
+
+ipcMain.handle('is-main-window-focused', () => {
+  return Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused());
 });
 
 ipcMain.handle('open-settings-window', (_event, tab?: string) => {
@@ -2116,77 +2124,132 @@ ipcMain.handle('auto-fetch-all-missing-artwork', async () => {
   return { updatedCount, games: currentGames };
 });
 
-// Bulk Scrape metadata and artwork for all emulated games
-ipcMain.handle('scrape-all-emulators-metadata', async () => {
-  const currentGames = store.getGames();
-  const emuGames = currentGames.filter((g) => g.platform === 'emulator' && !g.hidden);
-  let updatedCount = 0;
-  const total = emuGames.length;
-
-  for (let i = 0; i < emuGames.length; i++) {
-    const game = emuGames[i];
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('scraper-progress', {
-        current: i + 1,
-        total,
-        gameTitle: game.title,
-        coverUrl: game.coverUrl,
-      });
+function resolveEmulatorSystemHint(storeId?: string): string {
+  if (!storeId) return 'emulator';
+  const configs = emulatorService.getSavedConfigs();
+  const emu = configs.find((c) => c.id === storeId);
+  if (emu) {
+    if (emu.systemKey && emu.systemKey !== 'custom') {
+      return emu.systemKey;
     }
+    if (emu.consoleName) {
+      return emu.consoleName.toLowerCase().trim();
+    }
+    if (emu.name) {
+      return emu.name.toLowerCase().trim();
+    }
+  }
+  return storeId;
+}
 
-    try {
-      const platformOrEmuId = game.storeId || 'emulator';
-      const meta = await scrapeEmulatorGameMetadata(game.title, platformOrEmuId);
-      // Brief pause between requests to prevent API rate limiting
-      await new Promise((r) => setTimeout(r, 200));
-      if (meta) {
-        let changed = false;
-        if (meta.coverUrl && (!game.coverUrl || game.coverUrl.startsWith('data:image/svg') || game.coverUrl.includes('placeholder'))) {
-          game.coverUrl = meta.coverUrl;
-          changed = true;
-        }
-        if (meta.bannerUrl && (!game.bannerUrl || game.bannerUrl.startsWith('data:image/svg'))) {
-          game.bannerUrl = meta.bannerUrl;
-          changed = true;
-        }
-        if (meta.description && (!game.description || game.description.startsWith('Emulated title for'))) {
-          game.description = meta.description;
-          changed = true;
-        }
-        if (meta.developer) {
-          game.developer = meta.developer;
-          changed = true;
-        }
-        if (meta.publisher) {
-          game.publisher = meta.publisher;
-          changed = true;
-        }
-        if (meta.releaseDate) {
-          game.releaseDate = meta.releaseDate;
-          changed = true;
-        }
-        if (meta.genres && meta.genres.length > 0) {
-          const isGeneric = !game.genres || game.genres.length === 0 || game.genres.every((g) => g === 'Emulated' || g.toLowerCase().includes('retro'));
-          if (isGeneric) {
-            game.genres = meta.genres;
+// Bulk Scrape metadata and artwork for all emulated games
+ipcMain.handle(
+  'scrape-all-emulators-metadata',
+  async (_event, options?: { emulatorId?: string; forceRefresh?: boolean }) => {
+    const currentGames = store.getGames();
+    const targetEmuId = options?.emulatorId && options.emulatorId !== 'all' ? options.emulatorId : undefined;
+    const forceRefresh = options?.forceRefresh ?? true;
+
+    const emuGames = currentGames.filter(
+      (g) => g.platform === 'emulator' && !g.hidden && (!targetEmuId || g.storeId === targetEmuId)
+    );
+    let updatedCount = 0;
+    const total = emuGames.length;
+
+    for (let i = 0; i < emuGames.length; i++) {
+      const game = emuGames[i];
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('scraper-progress', {
+          current: i + 1,
+          total,
+          gameTitle: game.title,
+          coverUrl: game.coverUrl,
+        });
+      }
+
+      try {
+        const platformOrEmuId = resolveEmulatorSystemHint(game.storeId);
+        const rawRomTitle =
+          game.executablePath && game.title.split(/\s+/).length <= 1
+            ? path.basename(game.executablePath)
+            : game.title;
+        const meta = await scrapeEmulatorGameMetadata(rawRomTitle, platformOrEmuId);
+        // Brief pause between requests to prevent API rate limiting
+        await new Promise((r) => setTimeout(r, 200));
+        if (meta) {
+          let changed = false;
+          const isCustomLocalCover = Boolean(game.coverUrl && game.coverUrl.startsWith('aegis-media://'));
+          const isPlaceholderCover =
+            !game.coverUrl ||
+            game.coverUrl.startsWith('data:image/svg') ||
+            game.coverUrl.includes('placeholder') ||
+            game.coverUrl.includes('images.unsplash.com');
+
+          if (meta.coverUrl && (isPlaceholderCover || (forceRefresh && !isCustomLocalCover))) {
+            if (game.coverUrl !== meta.coverUrl) {
+              game.coverUrl = meta.coverUrl;
+              changed = true;
+            }
+          }
+
+          const isCustomLocalBanner = Boolean(game.bannerUrl && game.bannerUrl.startsWith('aegis-media://'));
+          const isPlaceholderBanner =
+            !game.bannerUrl ||
+            game.bannerUrl.startsWith('data:image/svg') ||
+            game.bannerUrl.includes('images.unsplash.com');
+
+          if (meta.bannerUrl && (isPlaceholderBanner || (forceRefresh && !isCustomLocalBanner))) {
+            if (game.bannerUrl !== meta.bannerUrl) {
+              game.bannerUrl = meta.bannerUrl;
+              changed = true;
+            }
+          }
+
+          if (
+            meta.description &&
+            (forceRefresh || !game.description || game.description.startsWith('Emulated title for'))
+          ) {
+            game.description = meta.description;
             changed = true;
           }
+          if (meta.developer) {
+            game.developer = meta.developer;
+            changed = true;
+          }
+          if (meta.publisher) {
+            game.publisher = meta.publisher;
+            changed = true;
+          }
+          if (meta.releaseDate) {
+            game.releaseDate = meta.releaseDate;
+            changed = true;
+          }
+          if (meta.genres && meta.genres.length > 0) {
+            const isGeneric =
+              !game.genres ||
+              game.genres.length === 0 ||
+              game.genres.every((g) => g === 'Emulated' || g.toLowerCase().includes('retro'));
+            if (isGeneric || forceRefresh) {
+              game.genres = meta.genres;
+              changed = true;
+            }
+          }
+          if (changed) {
+            updatedCount++;
+          }
         }
-        if (changed) {
-          updatedCount++;
-        }
+      } catch (e: any) {
+        console.warn(`[Scraper] Failed to scrape metadata for ${game.title}:`, e?.message);
       }
-    } catch (e: any) {
-      console.warn(`[Scraper] Failed to scrape metadata for ${game.title}:`, e?.message);
     }
-  }
 
-  if (updatedCount > 0) {
-    store.saveGames(currentGames);
-  }
+    if (updatedCount > 0) {
+      store.saveGames(currentGames);
+    }
 
-  return { updatedCount, totalCount: total, games: currentGames };
-});
+    return { updatedCount, totalCount: total, games: currentGames };
+  }
+);
 
 // Single game metadata scrape
 ipcMain.handle('scrape-single-game-metadata', async (_event, gameId: string) => {
@@ -2195,7 +2258,8 @@ ipcMain.handle('scrape-single-game-metadata', async (_event, gameId: string) => 
   if (!game) return { success: false, message: 'Game not found' };
 
   try {
-    const meta = await scrapeEmulatorGameMetadata(game.title, game.storeId || game.platform);
+    const systemHint = game.platform === 'emulator' ? resolveEmulatorSystemHint(game.storeId) : (game.storeId || game.platform);
+    const meta = await scrapeEmulatorGameMetadata(game.title, systemHint);
     if (meta) {
       if (meta.coverUrl) game.coverUrl = meta.coverUrl;
       if (meta.bannerUrl) game.bannerUrl = meta.bannerUrl;
@@ -2952,8 +3016,13 @@ ipcMain.handle('scan-emulators', async () => {
         playtimeMinutes: prev.playtimeMinutes || 0,
         lastPlayed: prev.lastPlayed,
         favorite: prev.favorite || false,
-        coverUrl: (prev.coverUrl && !prev.coverUrl.startsWith('data:image/svg')) ? prev.coverUrl : found.coverUrl,
-        bannerUrl: (prev.bannerUrl && !prev.bannerUrl.startsWith('data:image/svg')) ? prev.bannerUrl : found.bannerUrl,
+        description: prev.description && !prev.description.startsWith('Emulated title for') ? prev.description : found.description,
+        developer: prev.developer || found.developer,
+        publisher: prev.publisher || found.publisher,
+        releaseDate: prev.releaseDate || found.releaseDate,
+        genres: prev.genres && prev.genres.length > 0 ? prev.genres : found.genres,
+        coverUrl: (prev.coverUrl && !prev.coverUrl.startsWith('data:image/svg') && !prev.coverUrl.includes('images.unsplash.com')) ? prev.coverUrl : found.coverUrl,
+        bannerUrl: (prev.bannerUrl && !prev.bannerUrl.startsWith('data:image/svg') && !prev.bannerUrl.includes('images.unsplash.com')) ? prev.bannerUrl : found.bannerUrl,
       };
     }
     return found;
@@ -2961,6 +3030,53 @@ ipcMain.handle('scan-emulators', async () => {
 
   const merged = [...nonEmulatedGames, ...mergedEmuGames];
   store.saveGames(merged);
+
+  // Automatically fetch covers & metadata in the background for any ROMs still missing covers
+  const gamesNeedingArt = mergedEmuGames.filter(
+    (g) => !g.coverUrl || g.coverUrl.startsWith('data:image/svg') || g.coverUrl.includes('placeholder')
+  );
+  if (gamesNeedingArt.length > 0) {
+    (async () => {
+      const latestGames = store.getGames();
+      let updatedAny = false;
+      for (const target of gamesNeedingArt) {
+        const gameRef = latestGames.find((g) => g.id === target.id);
+        if (!gameRef) continue;
+        try {
+          const systemHint = resolveEmulatorSystemHint(gameRef.storeId);
+          const meta = await scrapeEmulatorGameMetadata(gameRef.title, systemHint);
+          await new Promise((r) => setTimeout(r, 150));
+          if (meta) {
+            if (meta.coverUrl && (!gameRef.coverUrl || gameRef.coverUrl.startsWith('data:image/svg'))) {
+              gameRef.coverUrl = meta.coverUrl;
+              updatedAny = true;
+            }
+            if (meta.bannerUrl && (!gameRef.bannerUrl || gameRef.bannerUrl.startsWith('data:image/svg'))) {
+              gameRef.bannerUrl = meta.bannerUrl;
+              updatedAny = true;
+            }
+            if (meta.description && (!gameRef.description || gameRef.description.startsWith('Emulated title for'))) {
+              gameRef.description = meta.description;
+              updatedAny = true;
+            }
+            if (meta.developer) gameRef.developer = meta.developer;
+            if (meta.publisher) gameRef.publisher = meta.publisher;
+            if (meta.releaseDate) gameRef.releaseDate = meta.releaseDate;
+            if (meta.genres && meta.genres.length > 0) gameRef.genres = meta.genres;
+          }
+        } catch {}
+      }
+      if (updatedAny) {
+        store.saveGames(latestGames);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(
+            'games-updated',
+            latestGames.map((g) => ({ ...g, isRunning: runningGames.has(g.id) }))
+          );
+        }
+      }
+    })();
+  }
 
   return { emulators, games: merged.map(g => ({ ...g, isRunning: runningGames.has(g.id) })) };
 });
@@ -3118,7 +3234,7 @@ ipcMain.handle('download-emulator', async (_event, emulatorId: string, downloadU
   }
 });
 
-ipcMain.handle('update-emulator-config', (_event, emulator: any) => {
+ipcMain.handle('update-emulator-config', async (_event, emulator: any) => {
   const configs = emulatorService.getSavedConfigs();
   const idx = configs.findIndex((c) => c.id === emulator.id);
   if (idx >= 0) {
@@ -3129,25 +3245,98 @@ ipcMain.handle('update-emulator-config', (_event, emulator: any) => {
   emulatorService.saveConfigs(configs);
 
   // If executablePath changed, update in library games for this emulator
+  const currentGames = store.getGames();
+  let changed = false;
   if (emulator.executablePath) {
-    const currentGames = store.getGames();
-    let changed = false;
     for (const g of currentGames) {
       if (g.platform === 'emulator' && g.storeId === emulator.id) {
         g.executablePath = emulator.executablePath;
         changed = true;
       }
     }
-    if (changed) {
-      store.saveGames(currentGames);
+  }
+
+  let finalGames = currentGames;
+  if (emulator.romPaths && emulator.romPaths.length > 0) {
+    try {
+      const scanRes = emulatorService.scanEmulatorsAndGames(currentGames);
+      emulatorService.saveConfigs(scanRes.emulators);
+
+      const nonEmulatedGames = currentGames.filter((g) => g.platform !== 'emulator');
+      const seenFoundIds = new Set<string>();
+      const uniqueFoundGames: Game[] = [];
+      for (const g of scanRes.games) {
+        if (isBiosOrSystemFile(g.title)) continue;
+        if (!seenFoundIds.has(g.id)) {
+          seenFoundIds.add(g.id);
+          uniqueFoundGames.push(g);
+        }
+      }
+      const existingEmuMap = new Map<string, Game>();
+      for (const g of currentGames) {
+        if (g.platform === 'emulator') existingEmuMap.set(g.id, g);
+      }
+      const mergedEmuGames = uniqueFoundGames.map((found) => {
+        const prev = existingEmuMap.get(found.id);
+        if (prev) {
+          return {
+            ...found,
+            playtimeMinutes: prev.playtimeMinutes || 0,
+            lastPlayed: prev.lastPlayed,
+            favorite: prev.favorite || false,
+            coverUrl: (prev.coverUrl && !prev.coverUrl.startsWith('data:image/svg')) ? prev.coverUrl : found.coverUrl,
+            bannerUrl: (prev.bannerUrl && !prev.bannerUrl.startsWith('data:image/svg')) ? prev.bannerUrl : found.bannerUrl,
+          };
+        }
+        return found;
+      });
+      finalGames = [...nonEmulatedGames, ...mergedEmuGames];
+      changed = true;
+    } catch (e) {
+      console.warn('Auto-scan on emulator update failed:', e);
     }
   }
+
+  if (changed) {
+    store.saveGames(finalGames);
+  }
+
+  const latestConfigs = emulatorService.getSavedConfigs();
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send('emulators-updated', latestConfigs);
+      if (changed) {
+        win.webContents.send('games-updated', finalGames);
+      }
+    }
+  });
 
   return true;
 });
 
 ipcMain.handle('delete-emulator-config', (_event, emulatorId: string) => {
   emulatorService.deleteConfig(emulatorId);
+
+  // Remove games associated with this emulator from store
+  const currentGames = store.getGames();
+  const remainingGames = currentGames.filter(
+    (g) => !(g.platform === 'emulator' && g.storeId === emulatorId)
+  );
+  if (remainingGames.length !== currentGames.length) {
+    store.saveGames(remainingGames);
+  }
+
+  const configs = emulatorService.getSavedConfigs();
+
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send('emulators-updated', configs);
+      if (remainingGames.length !== currentGames.length) {
+        win.webContents.send('games-updated', remainingGames);
+      }
+    }
+  });
+
   return true;
 });
 
