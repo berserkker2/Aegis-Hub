@@ -12,6 +12,7 @@ import {
 import { EmulatorConfig } from '../types/game';
 import { getSystemLogo } from '../utils/emulatorSystems';
 import { EmulatorSettingsModal } from './EmulatorSettingsModal';
+import { useDragScroll } from '../hooks/useDragScroll';
 
 interface SmoothScrollTask {
   targetLeft: number;
@@ -79,6 +80,7 @@ export const EmulatorShelf: React.FC<EmulatorShelfProps> = React.memo(({
 }) => {
   const [editingEmulator, setEditingEmulator] = useState<EmulatorConfig | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { isDragging } = useDragScroll(scrollRef);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
@@ -220,7 +222,9 @@ export const EmulatorShelf: React.FC<EmulatorShelfProps> = React.memo(({
       {/* Single Row Horizontal Scroll Container matching Recently Played */}
       <div
         ref={scrollRef}
-        className="flex items-center gap-3 overflow-x-auto py-1 px-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+        className={`flex items-center gap-3 overflow-x-auto py-1 px-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] cursor-grab active:cursor-grabbing ${
+          isDragging ? 'cursor-grabbing select-none [&_*]:cursor-grabbing [&_*]:select-none' : ''
+        }`}
       >
         {/* "All Systems" Aggregated Card */}
         <div

@@ -4,6 +4,7 @@ import { Game } from '../types/game';
 import { formatPlaytime, formatRelativeDate } from '../utils/formatters';
 import { GameImage } from './GameImage';
 import { PlatformBadge } from './PlatformBadge';
+import { useDragScroll } from '../hooks/useDragScroll';
 
 interface SmoothScrollTask {
   targetLeft: number;
@@ -170,6 +171,7 @@ export const RecentlyPlayedShelf: React.FC<RecentlyPlayedShelfProps> = React.mem
   showPlatformBadges = true,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { isDragging } = useDragScroll(scrollRef);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
@@ -269,7 +271,9 @@ export const RecentlyPlayedShelf: React.FC<RecentlyPlayedShelfProps> = React.mem
       {/* Single Row Horizontal Scroll Container */}
       <div
         ref={scrollRef}
-        className="flex items-center gap-3 overflow-x-auto py-1 px-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+        className={`flex items-center gap-3 overflow-x-auto py-1 px-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] cursor-grab active:cursor-grabbing ${
+          isDragging ? 'cursor-grabbing select-none [&_*]:cursor-grabbing [&_*]:select-none' : ''
+        }`}
       >
         {recentGames.map((game) => (
           <RecentGameCard
