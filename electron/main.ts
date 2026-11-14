@@ -2607,7 +2607,14 @@ async function launchGameCore(gameId: string): Promise<{ success: boolean; messa
 
     // 2. URI Protocol Launcher (Steam, GOG Galaxy, etc.)
     if (execPath && execPath.includes('://')) {
-      await shell.openExternal(execPath);
+      let finalUri = execPath;
+      if (game.launchArgs && execPath.startsWith('steam://rungameid/')) {
+        const appIdMatch = execPath.match(/steam:\/\/rungameid\/(\d+)/i);
+        if (appIdMatch) {
+          finalUri = `steam://run/${appIdMatch[1]}//${encodeURIComponent(game.launchArgs)}/`;
+        }
+      }
+      await shell.openExternal(finalUri);
       runningGames.set(gameId, { startTime });
       mainWindow?.webContents.send('game-status-changed', { gameId, isRunning: true });
 

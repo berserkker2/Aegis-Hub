@@ -14,6 +14,7 @@ export const EditGameModal: React.FC<EditGameModalProps> = ({ game, onClose, onS
 
   const [title, setTitle] = useState(game.title);
   const [executablePath, setExecutablePath] = useState(game.executablePath);
+  const [launchArgs, setLaunchArgs] = useState(game.launchArgs || '');
   const [platform, setPlatform] = useState<GamePlatform>(game.platform);
   const [coverUrl, setCoverUrl] = useState(game.coverUrl);
   const [bannerUrl, setBannerUrl] = useState(game.bannerUrl);
@@ -102,6 +103,7 @@ export const EditGameModal: React.FC<EditGameModalProps> = ({ game, onClose, onS
       ...game,
       title: title.trim(),
       executablePath: executablePath.trim(),
+      launchArgs: launchArgs.trim() || undefined,
       platform,
       coverUrl: coverUrl.trim(),
       bannerUrl: bannerUrl.trim(),
@@ -188,6 +190,21 @@ export const EditGameModal: React.FC<EditGameModalProps> = ({ game, onClose, onS
                 <span>Browse</span>
               </button>
             </div>
+          </div>
+
+          {/* Launch Options */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-semibold text-slate-300">Launch Options</label>
+              <span className="text-[10px] text-slate-500 font-normal">Command-line arguments (e.g. -novid -fullscreen --dx11)</span>
+            </div>
+            <input
+              type="text"
+              value={launchArgs}
+              onChange={(e) => setLaunchArgs(e.target.value)}
+              placeholder="-fullscreen -novid"
+              className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-lg px-3 py-2 text-xs text-slate-100 outline-none font-mono placeholder:text-slate-600"
+            />
           </div>
 
           {/* Separate Visuals Box */}

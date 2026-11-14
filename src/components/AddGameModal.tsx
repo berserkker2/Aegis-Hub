@@ -22,6 +22,7 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({
   // Single game state
   const [title, setTitle] = useState('');
   const [executablePath, setExecutablePath] = useState('');
+  const [launchArgs, setLaunchArgs] = useState('');
   const [platform, setPlatform] = useState<GamePlatform>('manual');
   const [coverUrl, setCoverUrl] = useState('');
   const [bannerUrl, setBannerUrl] = useState('');
@@ -117,6 +118,7 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({
       id: `game-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       title: title.trim(),
       executablePath: executablePath.trim(),
+      launchArgs: launchArgs.trim() || undefined,
       platform,
       coverUrl: coverUrl.trim() || getPlaceholderCover(title),
       bannerUrl: bannerUrl.trim() || getPlaceholderBanner(title),
@@ -480,6 +482,21 @@ export const AddGameModal: React.FC<AddGameModalProps> = ({
                 <span>Browse .exe</span>
               </button>
             </div>
+          </div>
+
+          {/* Launch Options */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-semibold text-slate-300">Launch Options</label>
+              <span className="text-[10px] text-slate-500 font-normal">Command-line arguments (e.g. -novid -fullscreen)</span>
+            </div>
+            <input
+              type="text"
+              placeholder="-fullscreen -novid"
+              value={launchArgs}
+              onChange={(e) => setLaunchArgs(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none transition font-mono placeholder:text-slate-600"
+            />
           </div>
 
           {/* Distinct Visuals Section */}

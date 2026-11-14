@@ -780,6 +780,15 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
                   </div>
                 )}
 
+                {game.launchArgs && (
+                  <div>
+                    <div className="text-slate-500 font-medium mb-1 select-none">Launch Options</div>
+                    <div className="font-mono text-cyan-300/90 break-all bg-slate-900 p-2 rounded border border-slate-800 text-[11px] select-text cursor-text">
+                      {game.launchArgs}
+                    </div>
+                  </div>
+                )}
+
                 {game.installPath && (
                   <div>
                     <div className="text-slate-500 font-medium mb-1 select-none">Installation Directory</div>
