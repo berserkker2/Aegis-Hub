@@ -1,21 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { X, Search, Image, Sparkles, Check, FolderOpen, RefreshCw, Layers, Link as LinkIcon } from 'lucide-react';
-import { Game } from '../types/game';
+import { X, Search, Image, Globe, Check, FolderOpen, RefreshCw, Gamepad2, Link as LinkIcon, Key, ExternalLink } from 'lucide-react';
+import { Game, LauncherSettings } from '../types/game';
 import { ArtworkOption } from '../types/electron';
 
 interface ArtworkPickerModalProps {
   game: Game;
+  settings?: LauncherSettings;
+  onSaveSettings?: (settings: LauncherSettings) => void;
   onClose: () => void;
   onSaveArtwork: (gameId: string, coverUrl: string, bannerUrl: string) => void;
 }
 
 export const ArtworkPickerModal: React.FC<ArtworkPickerModalProps> = ({
   game,
+  settings,
+  onSaveSettings,
   onClose,
   onSaveArtwork,
 }) => {
   const [searchTerm, setSearchTerm] = useState(game.title);
   const [loading, setLoading] = useState(false);
+  const [loadingWeb, setLoadingWeb] = useState(false);
+  const [includeRetro, setIncludeRetro] = useState(game.platform === 'emulator');
+  const [brokenUrls, setBrokenUrls] = useState<Set<string>>(new Set());
   const [coverOptions, setCoverOptions] = useState<ArtworkOption[]>([]);
   const [bannerOptions, setBannerOptions] = useState<ArtworkOption[]>([]);
 
@@ -28,12 +35,85 @@ export const ArtworkPickerModal: React.FC<ArtworkPickerModalProps> = ({
   const [customBannerUrl, setCustomBannerUrl] = useState('');
   const [showBannerUrlInput, setShowBannerUrlInput] = useState(false);
 
-  const fetchSuggestions = async (title: string) => {
+  // Optional API keys quick-add state (only shown if missing)
+  const [hasSgdbKey, setHasSgdbKey] = useState(Boolean(settings?.steamGridDbApiKey?.trim()));
+  const [hasRawgKey, setHasRawgKey] = useState(Boolean(settings?.rawgApiKey?.trim()));
+  const [activeKeyEditor, setActiveKeyEditor] = useState<'sgdb' | 'rawg' | null>(null);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [savingApiKey, setSavingApiKey] = useState(false);
+
+  useEffect(() => {
+    setHasSgdbKey(Boolean(settings?.steamGridDbApiKey?.trim()));
+    setHasRawgKey(Boolean(settings?.rawgApiKey?.trim()));
+  }, [settings?.steamGridDbApiKey, settings?.rawgApiKey]);
+
+  const handleSaveMissingApiKey = async () => {
+    const trimmed = apiKeyInput.trim();
+    if (!trimmed || !activeKeyEditor) return;
+    setSavingApiKey(true);
+    try {
+      const baseSettings =
+        settings ||
+        (window.api?.getSettings ? await window.api.getSettings() : ({} as LauncherSettings));
+      const updatedSettings: LauncherSettings = {
+        ...baseSettings,
+        ...(activeKeyEditor === 'sgdb'
+          ? { steamGridDbApiKey: trimmed }
+          : { rawgApiKey: trimmed }),
+      };
+
+      if (onSaveSettings) {
+        onSaveSettings(updatedSettings);
+      } else if (window.api?.saveSettings) {
+        await window.api.saveSettings(updatedSettings);
+      }
+
+      if (activeKeyEditor === 'sgdb') setHasSgdbKey(true);
+      if (activeKeyEditor === 'rawg') setHasRawgKey(true);
+      setActiveKeyEditor(null);
+      setApiKeyInput('');
+
+      // Wait briefly so settings persist in main process store, then refresh suggestions
+      setTimeout(() => {
+        fetchSuggestions(searchTerm);
+      }, 150);
+    } catch (err) {
+      console.error('Failed to save API key:', err);
+    } finally {
+      setSavingApiKey(false);
+    }
+  };
+
+  const markBroken = (url: string) => {
+    setBrokenUrls((prev) => {
+      if (prev.has(url)) return prev;
+      const next = new Set(prev);
+      next.add(url);
+      return next;
+    });
+  };
+
+  const fetchSuggestions = async (
+    title: string,
+    opts?: { includeWeb?: boolean; includeRetro?: boolean }
+  ) => {
     if (!title.trim() || !window.api?.searchArtworkSuggestions) return;
-    setLoading(true);
+    const isWeb = Boolean(opts?.includeWeb);
+    const useRetro = opts?.includeRetro !== undefined ? opts.includeRetro : includeRetro;
+
+    if (isWeb) {
+      setLoadingWeb(true);
+    } else {
+      setLoading(true);
+      setBrokenUrls(new Set());
+    }
+
     try {
       const platformOrEmuId = game.platform === 'emulator' ? (game.storeId || 'emulator') : game.platform;
-      const res = await window.api.searchArtworkSuggestions(title.trim(), platformOrEmuId);
+      const res = await window.api.searchArtworkSuggestions(title.trim(), platformOrEmuId, {
+        includeWeb: isWeb,
+        includeRetro: useRetro,
+      });
       setCoverOptions(res.covers || []);
       setBannerOptions(res.banners || []);
 
@@ -47,6 +127,7 @@ export const ArtworkPickerModal: React.FC<ArtworkPickerModalProps> = ({
       console.error('Error fetching artwork suggestions:', err);
     } finally {
       setLoading(false);
+      setLoadingWeb(false);
     }
   };
 
@@ -126,12 +207,12 @@ export const ArtworkPickerModal: React.FC<ArtworkPickerModalProps> = ({
         </div>
 
         {/* Search Bar */}
-        <div className="flex items-center gap-2 py-3 border-b border-slate-800/80 shrink-0">
-          <div className="relative flex-1">
+        <div className="flex flex-wrap items-center gap-2 py-3 border-b border-slate-800/80 shrink-0">
+          <div className="relative flex-1 min-w-[200px]">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
-              placeholder="Search title on Steam and web art databases..."
+              placeholder="Search title across stores & artwork databases..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && fetchSuggestions(searchTerm)}
@@ -139,14 +220,136 @@ export const ArtworkPickerModal: React.FC<ArtworkPickerModalProps> = ({
             />
           </div>
           <button
+            type="button"
             onClick={() => fetchSuggestions(searchTerm)}
-            disabled={loading}
+            disabled={loading || loadingWeb}
             className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span>Search</span>
           </button>
+          <button
+            type="button"
+            onClick={() => fetchSuggestions(searchTerm, { includeWeb: true })}
+            disabled={loading || loadingWeb}
+            title="Search slower web image databases (DuckDuckGo & Internet Archive)"
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold border border-slate-700 flex items-center gap-1.5 transition disabled:opacity-50"
+          >
+            <Globe className={`w-3.5 h-3.5 text-cyan-400 ${loadingWeb ? 'animate-spin' : ''}`} />
+            <span>{loadingWeb ? 'Searching Web...' : 'Search Web'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const nextRetro = !includeRetro;
+              setIncludeRetro(nextRetro);
+              fetchSuggestions(searchTerm, { includeRetro: nextRetro });
+            }}
+            disabled={loading || loadingWeb}
+            title="Toggle console & retro box art lookup (Libretro CDN)"
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1.5 transition disabled:opacity-50 ${
+              includeRetro
+                ? 'bg-indigo-600/25 text-indigo-300 border-indigo-500/50'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border-slate-700'
+            }`}
+          >
+            <Gamepad2 className="w-3.5 h-3.5" />
+            <span>Retro Boxart</span>
+          </button>
         </div>
+
+        {/* Unobtrusive Missing API Key Prompt (only renders if one or both keys are missing) */}
+        {(!hasSgdbKey || !hasRawgKey) && (
+          <div className="pt-2 pb-1 shrink-0">
+            {!activeKeyEditor ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-slate-950/60 border border-slate-800/80 text-[11px] text-slate-400">
+                <span>Want better HD covers &amp; banners for custom/console games?</span>
+                <div className="flex items-center gap-2">
+                  {!hasSgdbKey && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveKeyEditor('sgdb');
+                        setApiKeyInput('');
+                      }}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-800/80 hover:bg-slate-700 text-blue-300 hover:text-blue-200 border border-slate-700/80 transition font-medium"
+                    >
+                      <Key className="w-3 h-3" />
+                      <span>+ SteamGridDB Key</span>
+                    </button>
+                  )}
+                  {!hasRawgKey && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveKeyEditor('rawg');
+                        setApiKeyInput('');
+                      }}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition font-medium"
+                    >
+                      <Key className="w-3 h-3" />
+                      <span>+ RAWG Key</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-lg bg-slate-950 border border-blue-500/40">
+                <Key className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                <input
+                  type="password"
+                  autoFocus
+                  placeholder={
+                    activeKeyEditor === 'sgdb'
+                      ? 'Paste free SteamGridDB API key...'
+                      : 'Paste free RAWG API key...'
+                  }
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveMissingApiKey()}
+                  className="flex-1 min-w-[180px] bg-transparent text-xs text-slate-100 outline-none font-mono placeholder:text-slate-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const url =
+                      activeKeyEditor === 'sgdb'
+                        ? 'https://www.steamgriddb.com/profile/preferences/api'
+                        : 'https://rawg.io/apidocs';
+                    if (window.api?.openExternal) {
+                      window.api.openExternal(url);
+                    } else {
+                      window.open(url, '_blank');
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] text-blue-400 hover:text-blue-300 bg-slate-900 border border-slate-800 transition shrink-0"
+                >
+                  <span>Get Key</span>
+                  <ExternalLink className="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveMissingApiKey}
+                  disabled={!apiKeyInput.trim() || savingApiKey}
+                  className="px-3 py-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs font-semibold rounded-md transition shrink-0"
+                >
+                  {savingApiKey ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveKeyEditor(null);
+                    setApiKeyInput('');
+                  }}
+                  className="p-1 text-slate-400 hover:text-white rounded transition shrink-0"
+                  title="Cancel"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Content Body: Selectors */}
         <div className="flex-1 overflow-y-auto py-4 space-y-6 pr-1">
@@ -229,7 +432,9 @@ export const ArtworkPickerModal: React.FC<ArtworkPickerModalProps> = ({
                     </div>
                   </div>
                 )}
-                {coverOptions.map((opt, i) => {
+                {coverOptions
+                  .filter((opt) => !brokenUrls.has(opt.url))
+                  .map((opt, i) => {
                   const isSelected = selectedCover === opt.url;
                   return (
                     <div
@@ -241,7 +446,13 @@ export const ArtworkPickerModal: React.FC<ArtworkPickerModalProps> = ({
                           : 'border-slate-800 hover:border-slate-600'
                       }`}
                     >
-                      <img src={opt.previewUrl} alt={opt.label} className="w-full h-full object-cover" />
+                      <img
+                        src={opt.previewUrl}
+                        alt={opt.label}
+                        loading="lazy"
+                        onError={() => markBroken(opt.url)}
+                        className="w-full h-full object-cover"
+                      />
                       {isSelected && (
                         <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center shadow">
                           <Check className="w-3 h-3 stroke-[3]" />
@@ -336,7 +547,9 @@ export const ArtworkPickerModal: React.FC<ArtworkPickerModalProps> = ({
                     </div>
                   </div>
                 )}
-                {bannerOptions.map((opt, i) => {
+                {bannerOptions
+                  .filter((opt) => !brokenUrls.has(opt.url))
+                  .map((opt, i) => {
                   const isSelected = selectedBanner === opt.url;
                   return (
                     <div
@@ -348,7 +561,13 @@ export const ArtworkPickerModal: React.FC<ArtworkPickerModalProps> = ({
                           : 'border-slate-800 hover:border-slate-600'
                       }`}
                     >
-                      <img src={opt.previewUrl} alt={opt.label} className="w-full h-full object-cover" />
+                      <img
+                        src={opt.previewUrl}
+                        alt={opt.label}
+                        loading="lazy"
+                        onError={() => markBroken(opt.url)}
+                        className="w-full h-full object-cover"
+                      />
                       {isSelected && (
                         <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-purple-600 text-white flex items-center justify-center shadow">
                           <Check className="w-3 h-3 stroke-[3]" />

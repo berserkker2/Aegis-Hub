@@ -108,17 +108,33 @@ export class ImageManager {
 
   /**
    * Searches for multiple high-definition covers and hero banners for a given game title.
-   * Gives users choices to pick their favorite thumbnail and background!
+   * Uses fast official/API sources first, deferring slow web scraping unless requested or needed.
    */
   public async searchArtworkSuggestions(
     title: string,
-    platformOrEmuId?: string
+    platformOrEmuId?: string,
+    options?: {
+      includeWeb?: boolean;
+      includeRetro?: boolean;
+      steamGridDbApiKey?: string;
+      rawgApiKey?: string;
+    }
   ): Promise<{ covers: ArtworkOption[]; banners: ArtworkOption[] }> {
     const cleanTitle = cleanGameTitle(title);
     if (!cleanTitle) return { covers: [], banners: [] };
 
+    const includeWeb = Boolean(options?.includeWeb);
+    const isKnownPcStore =
+      !platformOrEmuId ||
+      ['manual', 'steam', 'epic', 'gog', 'ea', 'ubisoft', 'xbox'].includes(
+        platformOrEmuId.toLowerCase().trim()
+      );
+    const includeRetro = options?.includeRetro !== undefined ? options.includeRetro : !isKnownPcStore;
+    const sgdbKey = options?.steamGridDbApiKey?.trim() || '';
+    const rawgKey = options?.rawgApiKey?.trim() || '';
+
     // Check in-memory cache first (instant response)
-    const cacheKey = `${cleanTitle.toLowerCase()}::${platformOrEmuId || ''}`;
+    const cacheKey = `${cleanTitle.toLowerCase()}::${platformOrEmuId || ''}::w${includeWeb ? 1 : 0}::r${includeRetro ? 1 : 0}::s${sgdbKey ? 1 : 0}::g${rawgKey ? 1 : 0}`;
     const cached = this.artworkCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < 1000 * 60 * 15) {
       return { covers: [...cached.covers], banners: [...cached.banners] };
@@ -127,8 +143,123 @@ export class ImageManager {
     const covers: ArtworkOption[] = [];
     const banners: ArtworkOption[] = [];
 
-    // Run all artwork providers concurrently in parallel
+    const taskSteamGridDB = async () => {
+      const localCovers: ArtworkOption[] = [];
+      const localBanners: ArtworkOption[] = [];
+      if (!sgdbKey) return { covers: localCovers, banners: localBanners };
+      try {
+        const headers = {
+          Authorization: `Bearer ${sgdbKey}`,
+          Accept: 'application/json',
+        };
+        const searchRes = await fetch(
+          `https://www.steamgriddb.com/api/v2/search/autocomplete/${encodeURIComponent(cleanTitle)}`,
+          { headers, signal: AbortSignal.timeout(2000) }
+        );
+        if (!searchRes.ok) return { covers: localCovers, banners: localBanners };
+        const searchJson = await searchRes.json();
+        const matches = Array.isArray(searchJson?.data) ? searchJson.data.slice(0, 2) : [];
+
+        await Promise.allSettled(
+          matches.map(async (match: any) => {
+            const gameId = match.id;
+            const gameName = match.name || cleanTitle;
+            const [gridsRes, heroesRes] = await Promise.allSettled([
+              fetch(
+                `https://www.steamgriddb.com/api/v2/grids/game/${gameId}?dimensions=600x900,660x930,342x482&types=static`,
+                { headers, signal: AbortSignal.timeout(2000) }
+              ),
+              fetch(
+                `https://www.steamgriddb.com/api/v2/heroes/game/${gameId}?types=static`,
+                { headers, signal: AbortSignal.timeout(2000) }
+              ),
+            ]);
+
+            if (gridsRes.status === 'fulfilled' && gridsRes.value.ok) {
+              const gridsJson = await gridsRes.value.json();
+              const grids = Array.isArray(gridsJson?.data) ? gridsJson.data.slice(0, 6) : [];
+              for (const g of grids) {
+                if (g.url) {
+                  localCovers.push({
+                    url: g.url,
+                    previewUrl: g.thumb || g.url,
+                    type: 'cover',
+                    label: `${gameName} - ${g.width || 600}×${g.height || 900}`,
+                    source: 'SteamGridDB',
+                  });
+                }
+              }
+            }
+
+            if (heroesRes.status === 'fulfilled' && heroesRes.value.ok) {
+              const heroesJson = await heroesRes.value.json();
+              const heroes = Array.isArray(heroesJson?.data) ? heroesJson.data.slice(0, 4) : [];
+              for (const h of heroes) {
+                if (h.url) {
+                  localBanners.push({
+                    url: h.url,
+                    previewUrl: h.thumb || h.url,
+                    type: 'banner',
+                    label: `${gameName} - Hero ${h.width || 1920}×${h.height || 620}`,
+                    source: 'SteamGridDB Hero',
+                  });
+                }
+              }
+            }
+          })
+        );
+      } catch {}
+      return { covers: localCovers, banners: localBanners };
+    };
+
+    const taskRAWG = async () => {
+      const localCovers: ArtworkOption[] = [];
+      const localBanners: ArtworkOption[] = [];
+      if (!rawgKey) return { covers: localCovers, banners: localBanners };
+      try {
+        const rawgUrl = `https://api.rawg.io/api/games?key=${encodeURIComponent(rawgKey)}&search=${encodeURIComponent(
+          cleanTitle
+        )}&page_size=3`;
+        const data = await this.fetchJson(rawgUrl, 2000);
+        const results = Array.isArray(data?.results) ? data.results : [];
+        for (const item of results) {
+          if (item.background_image) {
+            localBanners.push({
+              url: item.background_image,
+              previewUrl: item.background_image,
+              type: 'banner',
+              label: `${item.name || cleanTitle} - RAWG Key Art`,
+              source: 'RAWG Database',
+            });
+            localCovers.push({
+              url: item.background_image,
+              previewUrl: item.background_image,
+              type: 'cover',
+              label: `${item.name || cleanTitle} - RAWG Cover`,
+              source: 'RAWG Database',
+            });
+          }
+          if (Array.isArray(item.short_screenshots)) {
+            for (const s of item.short_screenshots.slice(1, 3)) {
+              if (s?.image) {
+                localBanners.push({
+                  url: s.image,
+                  previewUrl: s.image,
+                  type: 'banner',
+                  label: `${item.name || cleanTitle} - Screenshot`,
+                  source: 'RAWG Screenshot',
+                });
+              }
+            }
+          }
+        }
+      } catch {}
+      return { covers: localCovers, banners: localBanners };
+    };
+
+    // Run fast artwork providers concurrently in parallel
     const taskLibretro = async () => {
+      if (!includeRetro) return null;
       try {
         const libretroMatch = await lookupLibretroArtwork(cleanTitle, platformOrEmuId);
         if (libretroMatch && libretroMatch.coverUrl) {
@@ -371,50 +502,70 @@ export class ImageManager {
       return { covers: localCovers, banners: localBanners };
     };
 
-    // Execute all providers in parallel
-    const [libretroRes, steamRes, gogRes, wikiRes, archiveRes, ddgRes] = await Promise.allSettled([
+    // Phase 1: Execute fast API & CDN providers in parallel
+    const [sgdbRes, libretroRes, steamRes, gogRes, rawgRes, wikiRes] = await Promise.allSettled([
+      taskSteamGridDB(),
       taskLibretro(),
       taskSteam(),
       taskGOG(),
+      taskRAWG(),
       taskWikipedia(),
-      taskArchive(),
-      taskDDG(),
     ]);
 
-    // Priority 1: Libretro (official console/retro boxart)
+    // Priority 1: SteamGridDB (600x900 vertical covers & 1920x620 heroes for PC, console, retro & ports)
+    if (sgdbRes.status === 'fulfilled') {
+      covers.push(...sgdbRes.value.covers);
+      banners.push(...sgdbRes.value.banners);
+    }
+
+    // Priority 2: Libretro (official console/retro boxart)
     if (libretroRes.status === 'fulfilled' && libretroRes.value) {
       if (libretroRes.value.cover) covers.push(libretroRes.value.cover);
       if (libretroRes.value.banner) banners.push(libretroRes.value.banner);
     }
 
-    // Priority 2: Steam (high-res official assets)
+    // Priority 3: Steam (high-res official assets)
     if (steamRes.status === 'fulfilled') {
       covers.push(...steamRes.value.covers);
       banners.push(...steamRes.value.banners);
     }
 
-    // Priority 3: GOG official artwork
+    // Priority 4: GOG official artwork
     if (gogRes.status === 'fulfilled') {
       covers.push(...gogRes.value.covers);
       banners.push(...gogRes.value.banners);
     }
 
-    // Priority 4: Wikipedia retail box arts
+    // Priority 5: RAWG key art & HD screenshots
+    if (rawgRes.status === 'fulfilled') {
+      covers.push(...rawgRes.value.covers);
+      banners.push(...rawgRes.value.banners);
+    }
+
+    // Priority 6: Wikipedia retail box arts (covers always; banners only as fallback if none found)
     if (wikiRes.status === 'fulfilled') {
       covers.push(...wikiRes.value.covers);
-      banners.push(...wikiRes.value.banners);
+      if (banners.length === 0) {
+        banners.push(...wikiRes.value.banners);
+      }
     }
 
-    // Priority 5: Internet Archive retro & vintage software
-    if (archiveRes.status === 'fulfilled') {
-      covers.push(...archiveRes.value.covers);
-      banners.push(...archiveRes.value.banners);
-    }
+    // Phase 2: Slow web scrapers (DuckDuckGo & Internet Archive) only run when requested OR if fast sources found 0 covers
+    if (includeWeb || covers.length === 0) {
+      const [ddgRes, archiveRes] = await Promise.allSettled([
+        taskDDG(),
+        taskArchive(),
+      ]);
 
-    // Priority 6: Web search database
-    if (ddgRes.status === 'fulfilled') {
-      covers.push(...ddgRes.value.covers);
-      banners.push(...ddgRes.value.banners);
+      if (ddgRes.status === 'fulfilled') {
+        covers.push(...ddgRes.value.covers);
+        banners.push(...ddgRes.value.banners);
+      }
+
+      if (archiveRes.status === 'fulfilled') {
+        covers.push(...archiveRes.value.covers);
+        banners.push(...archiveRes.value.banners);
+      }
     }
 
     // Deduplicate covers and banners by URL

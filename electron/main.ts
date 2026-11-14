@@ -1482,6 +1482,7 @@ ipcMain.handle('export-backup', async () => {
     const safeSettings: Partial<LauncherSettings> = {
       geminiApiKey: settings.geminiApiKey,
       rawgApiKey: settings.rawgApiKey,
+      steamGridDbApiKey: settings.steamGridDbApiKey,
       closeOnLaunch: settings.closeOnLaunch,
       minimizeToTray: settings.minimizeToTray,
       closeToTray: settings.closeToTray,
@@ -1635,6 +1636,7 @@ ipcMain.handle('import-backup', async () => {
         ...current,
         ...(data.settings.geminiApiKey ? { geminiApiKey: data.settings.geminiApiKey } : {}),
         ...(data.settings.rawgApiKey ? { rawgApiKey: data.settings.rawgApiKey } : {}),
+        ...(data.settings.steamGridDbApiKey ? { steamGridDbApiKey: data.settings.steamGridDbApiKey } : {}),
         ...(data.settings.closeOnLaunch !== undefined ? { closeOnLaunch: data.settings.closeOnLaunch } : {}),
         ...(data.settings.minimizeToTray !== undefined ? { minimizeToTray: data.settings.minimizeToTray } : {}),
         ...(data.settings.closeToTray !== undefined ? { closeToTray: data.settings.closeToTray } : {}),
@@ -2078,9 +2080,22 @@ ipcMain.handle('search-artwork', async (_event, title: string, platformOrEmuId?:
   return await lookupGameArtwork(title, platformOrEmuId);
 });
 
-ipcMain.handle('search-artwork-suggestions', async (_event, title: string, platformOrEmuId?: string) => {
-  return await imageManager.searchArtworkSuggestions(title, platformOrEmuId);
-});
+ipcMain.handle(
+  'search-artwork-suggestions',
+  async (
+    _event,
+    title: string,
+    platformOrEmuId?: string,
+    options?: { includeWeb?: boolean; includeRetro?: boolean }
+  ) => {
+    const settings = store.getSettings();
+    return await imageManager.searchArtworkSuggestions(title, platformOrEmuId, {
+      ...options,
+      steamGridDbApiKey: settings.steamGridDbApiKey,
+      rawgApiKey: settings.rawgApiKey,
+    });
+  }
+);
 
 ipcMain.handle('cache-image', async (_event, { url, type, gameId }: { url: string; type: 'cover' | 'banner'; gameId: string }) => {
   return await imageManager.cacheRemoteImage(url, type, gameId);

@@ -1104,6 +1104,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </button>
                     </div>
                   </div>
+
+                  <div className="pt-2 border-t border-slate-800/60">
+                    <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                      SteamGridDB API Key (Optional 600×900 Covers &amp; Hero Banners)
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        placeholder="Enter optional SteamGridDB API key..."
+                        value={currentSettings.steamGridDbApiKey || ''}
+                        onChange={(e) => handleUpdate({ steamGridDbApiKey: e.target.value.trim() })}
+                        className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.api?.openExternal) {
+                            window.api.openExternal('https://www.steamgriddb.com/profile/preferences/api');
+                          } else {
+                            window.open('https://www.steamgriddb.com/profile/preferences/api', '_blank');
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-blue-400 rounded-lg text-xs font-semibold border border-slate-700 transition flex items-center gap-1 shrink-0"
+                      >
+                        <span>Get Free Key</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Optional free key for instant HD vertical covers &amp; hero banners across PC, console exclusives, retro games, and custom ports.
+                    </p>
+                  </div>
                 </div>
               </div>
 

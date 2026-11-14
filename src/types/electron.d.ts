@@ -53,7 +53,11 @@ declare global {
       selectFile: (filters: { name: string; extensions: string[] }[]) => Promise<string | null>;
       selectFolder: () => Promise<string | null>;
       searchArtwork: (title: string, platformOrEmuId?: string) => Promise<ArtworkSearchResult | null>;
-      searchArtworkSuggestions: (title: string, platformOrEmuId?: string) => Promise<{ covers: ArtworkOption[]; banners: ArtworkOption[] }>;
+      searchArtworkSuggestions: (
+        title: string,
+        platformOrEmuId?: string,
+        options?: { includeWeb?: boolean; includeRetro?: boolean }
+      ) => Promise<{ covers: ArtworkOption[]; banners: ArtworkOption[] }>;
       cacheImage: (url: string, type: 'cover' | 'banner', gameId: string) => Promise<string>;
       toMediaUrl: (localPath: string) => Promise<string>;
       getStoreAccounts: () => Promise<StoreAccount[]>;

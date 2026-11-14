@@ -510,21 +510,34 @@ export async function lookupLibretroArtwork(
     : commonSystems;
 
   const titleVariants = generateLibretroTitleVariants(titleOrClean);
+  const candidates: Array<{ system: string; url: string }> = [];
 
   for (const system of systems) {
+    const encodedSystem = encodeURIComponent(system);
     for (const variant of titleVariants) {
-      const encodedSystem = encodeURIComponent(system);
       const encodedTitle = encodeURIComponent(variant);
-      const url = `https://thumbnails.libretro.com/${encodedSystem}/Named_Boxarts/${encodedTitle}.png`;
-      const exists = await checkHeadUrl(url);
-      if (exists) {
-        return {
-          title: titleOrClean,
-          coverUrl: url,
-          bannerUrl: url,
-          genres: ['Console / Retro', system.replace(/^[^-]+-\s*/, '')],
-        };
-      }
+      candidates.push({
+        system,
+        url: `https://thumbnails.libretro.com/${encodedSystem}/Named_Boxarts/${encodedTitle}.png`,
+      });
+    }
+  }
+
+  // Probe candidates in parallel batches so Libretro never blocks sequentially
+  const BATCH_SIZE = 10;
+  for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+    const batch = candidates.slice(i, i + BATCH_SIZE);
+    const results = await Promise.all(
+      batch.map(async (item) => ((await checkHeadUrl(item.url, 1000)) ? item : null))
+    );
+    const match = results.find((r) => r !== null);
+    if (match) {
+      return {
+        title: titleOrClean,
+        coverUrl: match.url,
+        bannerUrl: match.url,
+        genres: ['Console / Retro', match.system.replace(/^[^-]+-\s*/, '')],
+      };
     }
   }
   return null;

@@ -152,6 +152,7 @@ export interface LauncherSettings {
   trayIconColor?: 'white' | 'black';
   geminiApiKey?: string;
   rawgApiKey?: string;
+  steamGridDbApiKey?: string;
   customApps?: CustomApp[];
 }
 

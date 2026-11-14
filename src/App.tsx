@@ -1182,6 +1182,8 @@ export const App: React.FC = () => {
       {artworkPickerGame && (
         <ArtworkPickerModal
           game={artworkPickerGame}
+          settings={settings}
+          onSaveSettings={handleSaveSettings}
           onClose={() => setArtworkPickerGame(null)}
           onSaveArtwork={handleSaveArtwork}
         />

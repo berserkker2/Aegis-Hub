@@ -24,8 +24,12 @@ contextBridge.exposeInMainWorld('api', {
   selectFolder: (): Promise<string | null> => ipcRenderer.invoke('select-folder'),
   searchArtwork: (title: string, platformOrEmuId?: string): Promise<ArtworkSearchResult | null> =>
     ipcRenderer.invoke('search-artwork', title, platformOrEmuId),
-  searchArtworkSuggestions: (title: string, platformOrEmuId?: string): Promise<{ covers: any[]; banners: any[] }> =>
-    ipcRenderer.invoke('search-artwork-suggestions', title, platformOrEmuId),
+  searchArtworkSuggestions: (
+    title: string,
+    platformOrEmuId?: string,
+    options?: { includeWeb?: boolean; includeRetro?: boolean }
+  ): Promise<{ covers: any[]; banners: any[] }> =>
+    ipcRenderer.invoke('search-artwork-suggestions', title, platformOrEmuId, options),
   cacheImage: (url: string, type: 'cover' | 'banner', gameId: string): Promise<string> =>
     ipcRenderer.invoke('cache-image', { url, type, gameId }),
   toMediaUrl: (localPath: string): Promise<string> => ipcRenderer.invoke('to-media-url', localPath),
