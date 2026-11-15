@@ -11,9 +11,10 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
-  ChevronsRight
+  ChevronsRight,
+  LogIn
 } from 'lucide-react';
-import { Game, GamePlatform } from '../types/game';
+import { Game, GamePlatform, StoreAccount } from '../types/game';
 import { GameCard } from './GameCard';
 import { LibraryViewSlider, getViewMode, getThumbnailWidth } from './LibraryViewSlider';
 import { GameListView } from './GameListView';
@@ -35,9 +36,20 @@ interface GameGridProps {
   onOpenAddGame: () => void;
   onOpenScanner: () => void;
   showPlatformBadges?: boolean;
+  storeAccounts?: StoreAccount[];
+  onConnectStore?: (platform: GamePlatform) => void;
 }
 
 type SortOption = 'lastPlayed' | 'title' | 'playtime' | 'rating' | 'addedDate';
+
+const STORE_DISPLAY_NAMES: Partial<Record<GamePlatform, string>> = {
+  steam: 'Steam',
+  epic: 'Epic Games Store',
+  gog: 'GOG Galaxy',
+  ubisoft: 'Ubisoft Connect',
+  ea: 'EA App',
+  xbox: 'Xbox / Microsoft Store',
+};
 
 export const GameGrid: React.FC<GameGridProps> = React.memo(({
   games,
@@ -54,6 +66,8 @@ export const GameGrid: React.FC<GameGridProps> = React.memo(({
   onOpenAddGame,
   onOpenScanner,
   showPlatformBadges = true,
+  storeAccounts = [],
+  onConnectStore,
 }) => {
   const [sortBy, setSortBy] = useState<SortOption>('lastPlayed');
   const [sliderValue, setSliderValue] = useState<number>(() => {
@@ -75,6 +89,14 @@ export const GameGrid: React.FC<GameGridProps> = React.memo(({
 
   const viewMode = getViewMode(sliderValue);
   const thumbnailWidth = getThumbnailWidth(sliderValue);
+
+  const selectedStoreName = selectedPlatform !== 'all' ? STORE_DISPLAY_NAMES[selectedPlatform] : undefined;
+  const selectedStoreAccount = selectedPlatform !== 'all'
+    ? storeAccounts.find((a) => a.platform === selectedPlatform)
+    : undefined;
+  const isSelectedStoreUnconnected = Boolean(
+    selectedStoreName && (!selectedStoreAccount || !selectedStoreAccount.connected)
+  );
 
   const allGenres = useMemo(() => {
     const set = new Set<string>();
@@ -333,6 +355,25 @@ export const GameGrid: React.FC<GameGridProps> = React.memo(({
         </div>
       )}
 
+      {/* Unconnected Store Connect Banner (shown even when games appear for this store) */}
+      {isSelectedStoreUnconnected && filteredGames.length > 0 && selectedPlatform !== 'all' && onConnectStore && (
+        <div className="p-3.5 rounded-xl bg-blue-950/25 border border-blue-500/30 flex flex-wrap items-center justify-between gap-3 text-xs text-blue-100">
+          <div className="flex items-center gap-3">
+            <Cloud className="w-5 h-5 text-blue-400 shrink-0" />
+            <p className="leading-relaxed">
+              <span className="font-semibold text-white">{selectedStoreName}</span> is not connected in Settings. Connect your account to sync your full library.
+            </p>
+          </div>
+          <button
+            onClick={() => onConnectStore(selectedPlatform)}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-blue-600/20 transition cursor-pointer shrink-0"
+          >
+            <LogIn className="w-3.5 h-3.5" />
+            <span>Connect {selectedStoreName}</span>
+          </button>
+        </div>
+      )}
+
       {/* Grid or Empty State */}
       {filteredGames.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 px-4 text-center rounded-2xl bg-slate-950/40 border border-dashed border-slate-800">
@@ -349,26 +390,40 @@ export const GameGrid: React.FC<GameGridProps> = React.memo(({
           <p className="text-xs text-slate-400 mt-1 max-w-sm">
             {selectedFilter === 'hidden'
               ? 'You have not hidden any games yet. You can hide games or utility apps (like Wallpaper Engine) directly from their details view or by hovering over any card.'
+              : isSelectedStoreUnconnected && selectedStoreName
+              ? `Connect your ${selectedStoreName} account to sync your owned and installed games.`
               : selectedFilter === 'cloud'
-              ? 'Connect your Steam, Epic or GOG accounts to view owned games in the cloud.'
+              ? 'Connect your Steam, Epic, GOG, Ubisoft, EA or Xbox accounts to view owned games in the cloud.'
               : 'Try adjusting your search or filters, or add games automatically by scanning your PC.'}
           </p>
           {selectedFilter !== 'hidden' && (
             <div className="flex items-center gap-3 mt-6">
-              <button
-                onClick={onOpenScanner}
-                className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-lg shadow-blue-600/25 transition"
-              >
-                <FolderSync className="w-4 h-4" />
-                <span>Scan Computer</span>
-              </button>
-              <button
-                onClick={onOpenAddGame}
-                className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold border border-slate-700 transition"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Game Manually</span>
-              </button>
+              {isSelectedStoreUnconnected && selectedPlatform !== 'all' && onConnectStore ? (
+                <button
+                  onClick={() => onConnectStore(selectedPlatform)}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-lg shadow-blue-600/25 transition cursor-pointer"
+                >
+                  <LogIn className="w-4 h-4" />
+                  <span>Connect {selectedStoreName}</span>
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={onOpenScanner}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-lg shadow-blue-600/25 transition"
+                  >
+                    <FolderSync className="w-4 h-4" />
+                    <span>Scan Computer</span>
+                  </button>
+                  <button
+                    onClick={onOpenAddGame}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold border border-slate-700 transition"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add Game Manually</span>
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>

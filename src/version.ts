@@ -5,7 +5,7 @@ export interface AppVersionInfo {
 }
 
 export const APP_VERSION_INFO: AppVersionInfo = {
-  version: 'b14112026-1',
+  version: 'b15112026',
   releaseChannel: 'Beta',
-  buildDate: '14/11/2026',
+  buildDate: '15/11/2026',
 };

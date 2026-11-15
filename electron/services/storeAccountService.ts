@@ -9,6 +9,8 @@ import { epicDirectService } from './epicDirectService';
 import { steamOwnedService } from './steamOwnedService';
 import { ubisoftDirectService } from './ubisoftDirectService';
 import { eaDirectService } from './eaDirectService';
+import { xboxDirectService } from './xboxDirectService';
+import { scanXboxGames } from '../scanners/xboxScanner';
 
 function fetchHttp(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -43,15 +45,6 @@ export class StoreAccountService {
   }
 
   public getAccounts(): StoreAccount[] {
-    try {
-      if (fs.existsSync(this.accountsFilePath)) {
-        const raw = fs.readFileSync(this.accountsFilePath, 'utf-8');
-        return JSON.parse(raw);
-      }
-    } catch (err) {
-      console.error('Error loading store accounts:', err);
-    }
-
     const defaultAccounts: StoreAccount[] = [
       {
         platform: 'steam',
@@ -98,7 +91,44 @@ export class StoreAccountService {
         authType: 'credentials',
         color: '#f05a28',
       },
+      {
+        platform: 'xbox',
+        name: 'Xbox / Microsoft Store',
+        connected: false,
+        totalOwnedGames: 0,
+        description: 'Sync owned Xbox PC & Microsoft Store titles (installed + cloud).',
+        authType: 'oauth_token',
+        color: '#107c10',
+      },
     ];
+
+    try {
+      if (fs.existsSync(this.accountsFilePath)) {
+        const raw = fs.readFileSync(this.accountsFilePath, 'utf-8');
+        const saved: StoreAccount[] = JSON.parse(raw);
+        for (const def of defaultAccounts) {
+          if (!saved.some((s) => s.platform === def.platform)) {
+            saved.push(def);
+          }
+        }
+        if (xboxDirectService.hasSavedTokens()) {
+          const xboxTokens = xboxDirectService.getSavedTokens();
+          const xboxAcc = saved.find((a) => a.platform === 'xbox');
+          if (xboxAcc && xboxTokens) {
+            xboxAcc.connected = true;
+            xboxAcc.accountIdentifier = xboxTokens.gamertag || 'Xbox Gamer';
+            const expired = xboxDirectService.isTokenExpired();
+            xboxAcc.needsReauth = expired;
+            xboxAcc.description = expired
+              ? 'Session token expired. Re-authentication required.'
+              : 'Directly authenticated with Xbox Live / Microsoft Store.';
+          }
+        }
+        return saved;
+      }
+    } catch (err) {
+      console.error('Error loading store accounts:', err);
+    }
 
     // If local multi-store database is found, populate accounts with real counts
     if (galaxyDbService.isAvailable()) {
@@ -177,6 +207,21 @@ export class StoreAccountService {
         eaAcc.description = expired
           ? 'Session token expired. Re-authentication required.'
           : 'Directly authenticated with EA App API.';
+      }
+    }
+
+    // Check Xbox / Microsoft Store direct status & token expiration
+    if (xboxDirectService.hasSavedTokens()) {
+      const xboxTokens = xboxDirectService.getSavedTokens();
+      const xboxAcc = defaultAccounts.find((a) => a.platform === 'xbox');
+      if (xboxAcc && xboxTokens) {
+        xboxAcc.connected = true;
+        xboxAcc.accountIdentifier = xboxTokens.gamertag || 'Xbox Gamer';
+        const expired = xboxDirectService.isTokenExpired();
+        xboxAcc.needsReauth = expired;
+        xboxAcc.description = expired
+          ? 'Session token expired. Re-authentication required.'
+          : 'Directly authenticated with Xbox Live / Microsoft Store.';
       }
     }
 
@@ -496,6 +541,51 @@ export class StoreAccountService {
       description,
       authType: ubisoftDirectService.hasSavedTokens() ? 'oauth_token' : 'credentials',
       color: '#0070d6',
+      needsReauth,
+    };
+
+    return { account, games };
+  }
+
+  /**
+   * Syncs Xbox / Microsoft Store account (cloud TitleHub + local installed apps)
+   */
+  public async syncXboxAccount(identifier?: string): Promise<{ account: StoreAccount; games: Game[] }> {
+    let games: Game[] = [];
+    let accountIdentifier = identifier || 'Xbox Gamer';
+    let needsReauth = false;
+    let description = 'Synced from Xbox Live & local Microsoft Store.';
+
+    if (xboxDirectService.hasSavedTokens()) {
+      try {
+        const res = await xboxDirectService.syncOwnedGames();
+        games = res.games;
+        accountIdentifier = res.tokens.gamertag || accountIdentifier;
+        description = `Synced ${games.length} Xbox / Microsoft Store games as ${accountIdentifier}.`;
+      } catch (err: any) {
+        console.warn('[StoreAccountService] Xbox cloud sync failed, falling back to local scan:', err?.message);
+        needsReauth = xboxDirectService.isTokenExpired();
+        games = await scanXboxGames();
+        description = needsReauth
+          ? 'Session token expired. Showing locally installed Xbox games only.'
+          : `Synced ${games.length} locally installed Xbox games.`;
+      }
+    } else {
+      games = await scanXboxGames();
+      needsReauth = true;
+      description = 'Not signed in to Microsoft. Showing locally installed Xbox games only.';
+    }
+
+    const account: StoreAccount = {
+      platform: 'xbox',
+      name: 'Xbox / Microsoft Store',
+      connected: !needsReauth || games.length > 0,
+      accountIdentifier,
+      totalOwnedGames: games.length,
+      lastSynced: new Date().toISOString(),
+      description,
+      authType: 'oauth_token',
+      color: '#107c10',
       needsReauth,
     };
 

@@ -293,6 +293,13 @@ export class GameInstallationService {
       return false;
     }
 
+    if (game.platform === 'xbox') {
+      if (game.executablePath && game.executablePath.startsWith('shell:AppsFolder\\')) return true;
+      if (game.executablePath && fs.existsSync(game.executablePath)) return true;
+      if (game.installPath && fs.existsSync(game.installPath)) return true;
+      return false;
+    }
+
     // Local / Emulator / Manual
     if (game.executablePath && fs.existsSync(game.executablePath)) return true;
     if (game.installPath && fs.existsSync(game.installPath)) return true;

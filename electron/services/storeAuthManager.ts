@@ -8,6 +8,7 @@ import { galaxyDbService } from './galaxyDbService';
 import { epicDirectService } from './epicDirectService';
 import { ubisoftDirectService } from './ubisoftDirectService';
 import { eaDirectService } from './eaDirectService';
+import { xboxDirectService } from './xboxDirectService';
 
 export interface LocalDetectedAccount {
   platform: GamePlatform;
@@ -62,6 +63,20 @@ export class StoreAuthManager {
           accountIdentifier: epicTokens.accountId,
           details: `Direct Epic Games account (@${epicTokens.displayName}) - API connected`,
           avatarUrl: 'https://static-assets-prod.epicgames.com/epic-store/static/favicon.ico',
+        });
+      }
+    }
+
+    // 1.6. Detect Direct Xbox / Microsoft Store Account if authenticated
+    if (xboxDirectService.hasSavedTokens()) {
+      const xboxTokens = xboxDirectService.getSavedTokens();
+      if (xboxTokens) {
+        detected.push({
+          platform: 'xbox',
+          displayName: xboxTokens.gamertag || 'Xbox Gamer',
+          accountIdentifier: xboxTokens.xuid || xboxTokens.gamertag || 'Xbox Account',
+          details: `Direct Xbox Live / Microsoft Store account (${xboxTokens.gamertag}) - API connected`,
+          avatarUrl: 'https://www.xbox.com/favicon.ico',
         });
       }
     }
@@ -381,6 +396,33 @@ export class StoreAuthManager {
               description: 'Directly authenticated via EA App API.',
               authType: 'oauth_token',
               color: '#f05a28',
+              needsReauth: false,
+            };
+            finishSuccess(account, games);
+          })
+          .catch((err) => {
+            if (!completed) {
+              completed = true;
+              try {
+                if (!authWindow.isDestroyed()) authWindow.close();
+              } catch {}
+              reject(err);
+            }
+          });
+      } else if (platform === 'xbox') {
+        xboxDirectService
+          .authenticateWithWindow(authWindow, authSession)
+          .then(({ tokens, games }) => {
+            const account: StoreAccount = {
+              platform: 'xbox',
+              name: 'Xbox / Microsoft Store',
+              connected: true,
+              accountIdentifier: tokens.gamertag || 'Xbox Gamer',
+              totalOwnedGames: games.length,
+              lastSynced: new Date().toISOString(),
+              description: `Directly authenticated via Xbox Live as ${tokens.gamertag}.`,
+              authType: 'oauth_token',
+              color: '#107c10',
               needsReauth: false,
             };
             finishSuccess(account, games);

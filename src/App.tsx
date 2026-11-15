@@ -125,6 +125,22 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleConnectStore = useCallback(async (platform: GamePlatform) => {
+    if (!window.api?.openStoreLogin) return;
+    try {
+      showToast(`Opening ${platform.toUpperCase()} login...`);
+      await window.api.openStoreLogin(platform);
+      await reloadGamesFromStorage();
+      await reloadStoreAccounts();
+      showToast(`${platform.toUpperCase()} connected and library synced!`);
+    } catch (err: any) {
+      const msg = err?.message || '';
+      if (!msg.toLowerCase().includes('closed')) {
+        showToast(msg || `Failed to connect ${platform.toUpperCase()}`);
+      }
+    }
+  }, [showToast]);
+
   // Load settings and games on startup
   useEffect(() => {
     const loadData = async () => {
@@ -1137,6 +1153,8 @@ export const App: React.FC = () => {
                   onOpenAddGame={handleOpenAddModal}
                   onOpenScanner={handleOpenScannerModal}
                   showPlatformBadges={settings.showPlatformBadges ?? true}
+                  storeAccounts={storeAccounts}
+                  onConnectStore={handleConnectStore}
                 />
               </>
             )}

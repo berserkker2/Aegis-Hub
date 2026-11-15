@@ -290,7 +290,7 @@ export const StoreIntegrationsTab: React.FC<StoreIntegrationsTabProps> = ({
                           <span>Re-authenticate</span>
                         </button>
                       ) : (
-                        (account.platform === 'epic' || account.platform === 'ubisoft' || account.platform === 'ea') && !account.description.includes('API') && (
+                        (account.platform === 'epic' || account.platform === 'ubisoft' || account.platform === 'ea' || account.platform === 'xbox') && !account.description.includes('API') && (
                           <button
                             onClick={() => handleOpenBrowserLogin(account.platform)}
                             disabled={isLoggingIn || importingAll}
@@ -326,7 +326,7 @@ export const StoreIntegrationsTab: React.FC<StoreIntegrationsTabProps> = ({
                   ) : (
                     <button
                       onClick={() => {
-                        if (account.platform === 'epic' || account.platform === 'ubisoft' || account.platform === 'ea') {
+                        if (account.platform === 'epic' || account.platform === 'ubisoft' || account.platform === 'ea' || account.platform === 'xbox') {
                           handleOpenBrowserLogin(account.platform);
                         } else if (hasGalaxyDb) {
                           handleSyncDetectedAccount({

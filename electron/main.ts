@@ -8,6 +8,7 @@ import { scanEpicGames } from './scanners/epicScanner';
 import { scanGogGames } from './scanners/gogScanner';
 import { scanSteamGames } from './scanners/steamScanner';
 import { scanWindowsRegistryGames } from './scanners/registryScanner';
+import { scanXboxGames } from './scanners/xboxScanner';
 import { lookupGameArtwork, scrapeEmulatorGameMetadata } from './services/artworkService';
 import { StoreAccountService } from './services/storeAccountService';
 import { StoreAuthManager } from './services/storeAuthManager';
@@ -29,6 +30,7 @@ import { epicDirectService } from './services/epicDirectService';
 import { steamOwnedService } from './services/steamOwnedService';
 import { ubisoftDirectService } from './services/ubisoftDirectService';
 import { eaDirectService } from './services/eaDirectService';
+import { xboxDirectService } from './services/xboxDirectService';
 import { updaterService } from './services/updaterService';
 import { Game, GamePlatform, LauncherSettings, ScanResult } from '../src/types/game';
 
@@ -1151,8 +1153,34 @@ ipcMain.handle('system-power-action', async (_event, action: 'shutdown' | 'resta
 });
 
 // Library Storage IPC
+let xboxMigrationRunning = false;
 ipcMain.handle('get-games', () => {
   const games = store.getGames();
+
+  // Auto-clean legacy Xbox Game Bar Win32 entries (ms-xbox://search?q=...) and resync real Xbox PC games
+  if (!xboxMigrationRunning && games.some(g => g.platform === 'xbox' && g.installUrl?.startsWith('ms-xbox://'))) {
+    xboxMigrationRunning = true;
+    accountService
+      .syncXboxAccount()
+      .then((result) => {
+        const accounts = accountService.getAccounts();
+        const idx = accounts.findIndex((a) => a.platform === 'xbox');
+        if (idx >= 0) accounts[idx] = result.account;
+        else accounts.push(result.account);
+        accountService.saveAccounts(accounts);
+
+        const latestGames = store.getGames().filter((g) => g.platform !== 'xbox');
+        const merged = [...latestGames, ...result.games];
+        store.saveGames(merged);
+        mainWindow?.webContents.send('games-updated', merged);
+        mainWindow?.webContents.send('store-accounts-updated', accounts);
+      })
+      .catch((err) => console.warn('[Main] Xbox auto-migration warning:', err))
+      .finally(() => {
+        xboxMigrationRunning = false;
+      });
+  }
+
   const { updatedCount } = steamPlaytimeService.syncGamesPlaytime(games);
   const { updatedCount: genreUpdatedCount } = genreEnrichmentService.enrichAllGamesSync(games);
   const { updatedCount: installUpdatedCount } = gameInstallationService.syncInstallationStatus(games);
@@ -2383,6 +2411,9 @@ ipcMain.handle('sync-store-account', async (_event, { platform, identifier, apiK
     case 'ubisoft':
       result = await accountService.syncUbisoftAccount(identifier);
       break;
+    case 'xbox':
+      result = await accountService.syncXboxAccount(identifier);
+      break;
     default:
       throw new Error(`Unsupported platform ${platform}`);
   }
@@ -2427,6 +2458,9 @@ ipcMain.handle('disconnect-store-account', (_event, platform: GamePlatform) => {
   }
   if (platform === 'ubisoft') {
     ubisoftDirectService.clearTokens();
+  }
+  if (platform === 'xbox') {
+    xboxDirectService.clearTokens();
   }
   const accounts = accountService.getAccounts();
   const target = accounts.find(a => a.platform === platform);
@@ -2511,6 +2545,38 @@ ipcMain.handle('select-folder', async () => {
   return result.filePaths[0];
 });
 
+async function openXboxAppOrInstaller(game: Game): Promise<void> {
+  const xboxAppPkgDir = path.join(process.env.LOCALAPPDATA || '', 'Packages', 'Microsoft.GamingApp_8wekyb3d8bbwe');
+  const isXboxAppInstalled = fs.existsSync(xboxAppPkgDir);
+
+  // Extract or resolve the 12-character Microsoft Store ProductId (BigId)
+  let productId = '';
+  if (game.storeId && /^[A-Z0-9]{12}$/i.test(game.storeId)) {
+    productId = game.storeId;
+  } else if (game.installUrl) {
+    const m = game.installUrl.match(/productId=([A-Z0-9]{12})/i);
+    if (m) productId = m[1];
+  }
+
+  if (!productId && game.storeId && /^\d+$/.test(game.storeId)) {
+    productId = await xboxDirectService.resolveStoreProductId(undefined, game.storeId);
+  }
+
+  if (isXboxAppInstalled) {
+    if (productId) {
+      await shell.openExternal(`msxbox://game/?productId=${productId}`);
+    } else if (game.installUrl && game.installUrl.startsWith('ms-windows-store://pdp/?PFN=')) {
+      await shell.openExternal(game.installUrl);
+    } else {
+      await shell.openExternal('msxbox://');
+    }
+  } else {
+    // Xbox PC App not installed: open Microsoft Store to install the game or the Xbox App itself (9WZDNCRFHVJL)
+    const targetProductId = productId || '9WZDNCRFHVJL';
+    await shell.openExternal(`ms-windows-store://pdp/?ProductId=${targetProductId}`);
+  }
+}
+
 // Install Game IPC (for uninstalled cloud games)
 ipcMain.handle('install-game', async (_event, gameId: string) => {
   const games = store.getGames();
@@ -2528,12 +2594,22 @@ ipcMain.handle('install-game', async (_event, gameId: string) => {
 
     // Launch it seamlessly since it is already installed!
     if (game.executablePath) {
-      await shell.openExternal(game.executablePath);
+      if (game.executablePath.startsWith('shell:AppsFolder')) {
+        const child = spawn('explorer.exe', [game.executablePath], { detached: true, stdio: 'ignore' });
+        child.unref();
+      } else {
+        await shell.openExternal(game.executablePath);
+      }
       const startTime = Date.now();
       runningGames.set(game.id, { startTime });
       mainWindow?.webContents.send('game-status-changed', { gameId: game.id, isRunning: true });
     }
     return { success: true, message: 'Game is already installed. Launching now!' };
+  }
+
+  if (game.platform === 'xbox') {
+    await openXboxAppOrInstaller(game);
+    return { success: true };
   }
 
   if (game.platform === 'epic') {
@@ -2572,6 +2648,9 @@ async function launchGameCore(gameId: string): Promise<{ success: boolean; messa
         game.tags = game.tags.filter(t => t.toLowerCase() !== 'uninstalled');
       }
       store.saveGames(games);
+    } else if (game.platform === 'xbox') {
+      await openXboxAppOrInstaller(game);
+      return { success: true, message: 'Opened Xbox app.' };
     } else if (game.installUrl) {
       await shell.openExternal(game.installUrl);
       return { success: true, message: 'Prompted store installer.' };
@@ -2618,6 +2697,33 @@ async function launchGameCore(gameId: string): Promise<{ success: boolean; messa
           console.warn('Failed to launch via Epic URI, falling back to executable:', epicErr);
         }
       }
+    }
+
+    // 1.5. Windows Store / Xbox UWP AppsFolder Launcher
+    if (execPath && execPath.startsWith('shell:AppsFolder')) {
+      const child = spawn('explorer.exe', [execPath], { detached: true, stdio: 'ignore' });
+      child.unref();
+      runningGames.set(gameId, { startTime });
+      mainWindow?.webContents.send('game-status-changed', { gameId, isRunning: true });
+
+      game.lastPlayed = new Date().toISOString();
+      store.saveGames(games);
+      updateTrayMenu();
+
+      const currentSettings = store.getSettings();
+      if (currentSettings.minimizeToTray && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.hide();
+      }
+
+      setTimeout(() => {
+        runningGames.delete(gameId);
+        mainWindow?.webContents.send('game-status-changed', { gameId, isRunning: false, elapsedMinutes: 0 });
+        if (currentSettings.minimizeToTray && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.show();
+        }
+      }, 10000);
+
+      return { success: true };
     }
 
     // 2. URI Protocol Launcher (Steam, GOG Galaxy, etc.)
@@ -2886,11 +2992,12 @@ ipcMain.handle('launch-custom-app', async (_event, customApp: { name: string; ex
 
 // PC Scanners IPC
 ipcMain.handle('scan-pc', async () => {
-  const [epicGames, gogGames, steamGames, registryGames] = await Promise.all([
+  const [epicGames, gogGames, steamGames, registryGames, xboxGames] = await Promise.all([
     scanEpicGames(),
     scanGogGames(),
     scanSteamGames(),
     scanWindowsRegistryGames(),
+    scanXboxGames(),
   ]);
 
   const currentGames = store.getGames();
@@ -2899,7 +3006,7 @@ ipcMain.handle('scan-pc', async () => {
     store.saveGames(currentGames);
   }
 
-  const allFound = [...epicGames, ...gogGames, ...steamGames, ...registryGames];
+  const allFound = [...epicGames, ...gogGames, ...steamGames, ...registryGames, ...xboxGames];
 
   const uniqueMap = new Map<string, ScanResult>();
   for (const item of allFound) {
