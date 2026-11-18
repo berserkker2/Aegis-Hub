@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Minus, Square, Copy, X, Search, Settings as SettingsIcon, Tv, Sparkles } from 'lucide-react';
+import { Minus, Square, Copy, X, Search, Settings as SettingsIcon, Tv, Sparkles, Sun } from 'lucide-react';
 import aegisLogo from '../assets/logos/aegis_logo.webp';
 
 interface TitleBarProps {
@@ -19,10 +19,31 @@ export const TitleBar: React.FC<TitleBarProps> = React.memo(({
 }) => {
   const [isMaximized, setIsMaximized] = useState(false);
   const [updateAvailableTag, setUpdateAvailableTag] = useState<string | null>(null);
+  const [hdrSupported, setHdrSupported] = useState(false);
+  const [hdrEnabled, setHdrEnabled] = useState(false);
+  const [hdrSwitching, setHdrSwitching] = useState(false);
 
   useEffect(() => {
     if (window.api?.isMaximized) {
       window.api.isMaximized().then(setIsMaximized);
+    }
+
+    if (window.api?.getHdrStatus) {
+      window.api
+        .getHdrStatus()
+        .then((status) => {
+          setHdrSupported(Boolean(status?.supported));
+          setHdrEnabled(Boolean(status?.enabled));
+        })
+        .catch(() => {});
+    }
+
+    let unsubHdr: (() => void) | undefined;
+    if (window.api?.onHdrStatusChanged) {
+      unsubHdr = window.api.onHdrStatusChanged((status) => {
+        setHdrSupported(Boolean(status?.supported));
+        setHdrEnabled(Boolean(status?.enabled));
+      });
     }
 
     // Check updates silently in background on startup if autoCheckUpdates is enabled (default true)
@@ -41,7 +62,23 @@ export const TitleBar: React.FC<TitleBarProps> = React.memo(({
       };
       runCheck();
     }
+
+    return () => {
+      if (unsubHdr) unsubHdr();
+    };
   }, []);
+
+  const handleToggleHdr = async () => {
+    if (!window.api?.toggleHdrStatus || hdrSwitching) return;
+    setHdrSwitching(true);
+    try {
+      const res = await window.api.toggleHdrStatus();
+      setHdrSupported(Boolean(res?.supported));
+      setHdrEnabled(Boolean(res?.enabled));
+    } catch {} finally {
+      setHdrSwitching(false);
+    }
+  };
 
   const handleMinimize = () => {
     window.api?.windowMinimize();
@@ -103,6 +140,22 @@ export const TitleBar: React.FC<TitleBarProps> = React.memo(({
           >
             <Sparkles className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
             <span className="font-bold text-[11px]">Update v{updateAvailableTag}</span>
+          </button>
+        )}
+
+        {hdrSupported && (
+          <button
+            onClick={handleToggleHdr}
+            disabled={hdrSwitching}
+            title={hdrEnabled ? 'Windows HDR is ON — click to turn OFF' : 'Windows HDR is OFF — click to turn ON'}
+            className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border transition cursor-pointer disabled:opacity-60 ${
+              hdrEnabled
+                ? 'text-cyan-200 bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-500/45 shadow-sm shadow-cyan-500/10'
+                : 'text-slate-400 hover:text-slate-200 bg-slate-900/80 hover:bg-slate-800 border-slate-800'
+            }`}
+          >
+            <Sun className={`w-3.5 h-3.5 ${hdrEnabled ? 'text-cyan-400' : 'text-slate-500'}`} />
+            <span className="font-bold text-[11px]">{hdrEnabled ? 'HDR ON' : 'HDR'}</span>
           </button>
         )}
 

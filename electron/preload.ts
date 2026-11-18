@@ -168,4 +168,14 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('main-window-focused', listener);
     return () => ipcRenderer.removeListener('main-window-focused', listener);
   },
+  getHdrStatus: (): Promise<{ supported: boolean; enabled: boolean }> => ipcRenderer.invoke('get-hdr-status'),
+  setHdrStatus: (enable: boolean): Promise<{ supported: boolean; enabled: boolean; changed?: boolean }> =>
+    ipcRenderer.invoke('set-hdr-status', enable),
+  toggleHdrStatus: (): Promise<{ supported: boolean; enabled: boolean; changed?: boolean }> =>
+    ipcRenderer.invoke('toggle-hdr-status'),
+  onHdrStatusChanged: (callback: (status: { supported: boolean; enabled: boolean }) => void) => {
+    const listener = (_event: any, status: { supported: boolean; enabled: boolean }) => callback(status);
+    ipcRenderer.on('hdr-status-changed', listener);
+    return () => ipcRenderer.removeListener('hdr-status-changed', listener);
+  },
 });

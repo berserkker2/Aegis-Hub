@@ -51,6 +51,7 @@ export interface Game {
   lastPlayed?: string; // ISO date string
   addedDate: string; // ISO date string
   isRunning?: boolean;
+  autoHdr?: boolean;
 }
 
 export interface StoreAccount {

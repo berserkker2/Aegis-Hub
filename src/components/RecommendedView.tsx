@@ -542,7 +542,7 @@ export const RecommendedView: React.FC<RecommendedViewProps> = ({
                           <div
                             key={item.id}
                             onClick={() => handleSelectSteamRelease(item, libGame)}
-                            className="group relative flex flex-col bg-slate-900/90 hover:bg-slate-800/90 border border-slate-800/80 hover:border-blue-500/50 rounded-xl overflow-hidden transition duration-200 cursor-pointer shadow-lg hover:shadow-blue-500/10 hover:-translate-y-1"
+                            className="group relative flex flex-col bg-slate-900/90 hover:bg-slate-800/90 border border-slate-800/80 hover:border-blue-500/50 rounded-xl overflow-hidden transition duration-200 cursor-pointer shadow-lg hover:shadow-blue-500/10"
                           >
                             {/* Vertical 2:3 Cover Poster */}
                             <div className="relative aspect-[2/3] w-full overflow-hidden bg-slate-950 flex items-center justify-center">

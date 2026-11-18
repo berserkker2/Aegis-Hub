@@ -130,6 +130,10 @@ declare global {
       onRestoreBigPicture: (callback: () => void) => () => void;
       isMainWindowFocused: () => Promise<boolean>;
       onMainWindowFocus: (callback: (focused: boolean) => void) => () => void;
+      getHdrStatus: () => Promise<{ supported: boolean; enabled: boolean }>;
+      setHdrStatus: (enable: boolean) => Promise<{ supported: boolean; enabled: boolean; changed?: boolean }>;
+      toggleHdrStatus: () => Promise<{ supported: boolean; enabled: boolean; changed?: boolean }>;
+      onHdrStatusChanged: (callback: (status: { supported: boolean; enabled: boolean }) => void) => () => void;
     };
   }
 }

@@ -25,6 +25,7 @@ export const EditGameModal: React.FC<EditGameModalProps> = ({ game, onClose, onS
   const [favorite, setFavorite] = useState(game.favorite);
   const [installed, setInstalled] = useState(game.installed !== false);
   const [hidden, setHidden] = useState(game.hidden || false);
+  const [autoHdr, setAutoHdr] = useState(Boolean(game.autoHdr));
   const [playtimeHours, setPlaytimeHours] = useState<number>(() => {
     const mins = Math.max(0, game.playtimeMinutes || 0);
     return Math.floor(mins / 60);
@@ -114,6 +115,7 @@ export const EditGameModal: React.FC<EditGameModalProps> = ({ game, onClose, onS
       favorite,
       installed,
       hidden,
+      autoHdr,
       playtimeMinutes: totalPlaytimeMinutes,
       lastPlayed: newLastPlayed,
     });
@@ -488,6 +490,16 @@ export const EditGameModal: React.FC<EditGameModalProps> = ({ game, onClose, onS
                 className="rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0"
               />
               <span>Installed locally on this PC</span>
+            </label>
+
+            <label className="flex items-center gap-2 text-xs text-cyan-300 font-medium cursor-pointer" title="Automatically switch Windows monitor to HDR while this game is running and turn it off when closed">
+              <input
+                type="checkbox"
+                checked={autoHdr}
+                onChange={(e) => setAutoHdr(e.target.checked)}
+                className="rounded bg-slate-950 border-slate-700 text-cyan-500 focus:ring-0"
+              />
+              <span>Auto-enable Windows HDR while playing</span>
             </label>
 
             <label className="flex items-center gap-2 text-xs text-amber-300 font-medium cursor-pointer">

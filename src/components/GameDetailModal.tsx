@@ -18,7 +18,8 @@ import {
   Images,
   Eye,
   EyeOff,
-  Loader2
+  Loader2,
+  Sun
 } from 'lucide-react';
 import { Game } from '../types/game';
 import { formatPlaytime, formatRelativeDate } from '../utils/formatters';
@@ -555,6 +556,25 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({
                           />
                           <span>{game.favorite ? 'Favorited' : 'Favorite'}</span>
                         </button>
+
+                        {onUpdateGame && (
+                          <button
+                            onClick={() => onUpdateGame({ ...game, autoHdr: !game.autoHdr })}
+                            title={
+                              game.autoHdr
+                                ? 'Auto HDR is enabled: Windows HDR will turn ON automatically when launching this game and turn OFF when it closes'
+                                : 'Enable Auto HDR: automatically turn ON Windows HDR while this game is running'
+                            }
+                            className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+                              game.autoHdr
+                                ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                            }`}
+                          >
+                            <Sun className={`w-3.5 h-3.5 ${game.autoHdr ? 'text-cyan-400' : 'text-slate-400'}`} />
+                            <span>{game.autoHdr ? 'Auto HDR: ON' : 'Auto HDR'}</span>
+                          </button>
+                        )}
 
                         {onOpenArtworkPicker && (
                           <button

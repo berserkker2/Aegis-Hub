@@ -32,7 +32,7 @@ export const GameCard: React.FC<GameCardProps> = React.memo(({
   return (
     <div
       onClick={() => onSelectGame(game)}
-      className="group relative flex flex-col rounded-xl overflow-hidden bg-slate-900 border border-slate-800/80 hover:border-blue-500/60 transition-[transform,border-color] duration-200 ease-out transform-gpu will-change-transform hover:-translate-y-0.5 cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_310px]"
+      className="group relative flex flex-col rounded-xl overflow-hidden bg-slate-900 border border-slate-800/80 hover:border-blue-500/60 transition-colors duration-200 ease-out transform-gpu cursor-pointer [content-visibility:auto] [contain-intrinsic-size:auto_310px]"
     >
       {/* Box art container - 2:3 vertical aspect ratio */}
       <div className="relative aspect-[2/3] w-full overflow-hidden bg-slate-950">
@@ -75,7 +75,9 @@ export const GameCard: React.FC<GameCardProps> = React.memo(({
             <button
               onClick={(e) => onToggleFavorite(game.id, e)}
               title={game.favorite ? 'Favorited' : 'Add to Favorites'}
-              className="w-7 h-7 rounded-full bg-slate-950/85 hover:bg-slate-900 border border-slate-700/70 flex items-center justify-center text-slate-300 hover:text-amber-400 transition-colors"
+              className={`w-7 h-7 rounded-full bg-slate-950/85 hover:bg-slate-900 border border-slate-700/70 flex items-center justify-center text-slate-300 hover:text-amber-400 transform-gpu transition-[transform,color,background-color] duration-150 ease-out ${
+                onOpenArtworkPicker ? 'translate-x-16' : 'translate-x-8'
+              } group-hover:translate-x-0`}
             >
               <Star
                 className={`w-3.5 h-3.5 ${
@@ -90,7 +92,7 @@ export const GameCard: React.FC<GameCardProps> = React.memo(({
                   onOpenArtworkPicker(game, e);
                 }}
                 title="Change or search artwork"
-                className="w-7 h-7 rounded-full bg-slate-950/85 hover:bg-slate-900 border border-slate-700/70 flex items-center justify-center text-slate-400 hover:text-blue-400 transition-opacity duration-150 opacity-0 group-hover:opacity-100"
+                className="w-7 h-7 rounded-full bg-slate-950/85 hover:bg-slate-900 border border-slate-700/70 flex items-center justify-center text-slate-400 hover:text-blue-400 transition-opacity duration-150 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
               >
                 <ImageIcon className="w-3.5 h-3.5" />
               </button>
@@ -98,7 +100,7 @@ export const GameCard: React.FC<GameCardProps> = React.memo(({
             <button
               onClick={(e) => onEditGame(game, e)}
               title="Edit game info"
-              className="w-7 h-7 rounded-full bg-slate-950/85 hover:bg-slate-900 border border-slate-700/70 flex items-center justify-center text-slate-400 hover:text-slate-200 transition-opacity duration-150 opacity-0 group-hover:opacity-100"
+              className="w-7 h-7 rounded-full bg-slate-950/85 hover:bg-slate-900 border border-slate-700/70 flex items-center justify-center text-slate-400 hover:text-slate-200 transition-opacity duration-150 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto"
             >
               <MoreVertical className="w-3.5 h-3.5" />
             </button>

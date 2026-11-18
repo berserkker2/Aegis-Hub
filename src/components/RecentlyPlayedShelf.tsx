@@ -63,7 +63,7 @@ const RecentGameCard = React.memo<RecentGameCardProps>(({
   return (
     <div
       onClick={() => onSelectGame(game)}
-      className="shrink-0 w-60 sm:w-64 group relative h-28 rounded-xl overflow-hidden bg-slate-900 border border-slate-800/80 hover:border-blue-500/60 transition-[transform,border-color] duration-200 ease-out transform-gpu will-change-transform hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between p-2.5"
+      className="shrink-0 w-60 sm:w-64 group relative h-28 rounded-xl overflow-hidden bg-slate-900 border border-slate-800/80 hover:border-blue-500/60 transition-colors duration-200 ease-out transform-gpu cursor-pointer flex flex-col justify-between p-2.5"
     >
       {/* Distinct Background Banner */}
       <div className="absolute inset-0 overflow-hidden">

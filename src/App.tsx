@@ -141,6 +141,14 @@ export const App: React.FC = () => {
     }
   }, [showToast]);
 
+  const handleSelectPlatform = useCallback((platform: GamePlatform | 'all') => {
+    setSelectedPlatform(platform);
+    const libraryFilters = new Set(['all', 'installed', 'favorites', 'cloud', 'recent', 'hidden']);
+    if (!libraryFilters.has(selectedFilter)) {
+      setSelectedFilter('all');
+    }
+  }, [selectedFilter]);
+
   // Load settings and games on startup
   useEffect(() => {
     const loadData = async () => {
@@ -1068,7 +1076,7 @@ export const App: React.FC = () => {
           currentFilter={selectedFilter}
           onSelectFilter={setSelectedFilter}
           selectedPlatform={selectedPlatform}
-          onSelectPlatform={setSelectedPlatform}
+          onSelectPlatform={handleSelectPlatform}
           totalGames={totalVisibleCount}
           installedCount={installedCount}
           cloudCount={cloudCount}

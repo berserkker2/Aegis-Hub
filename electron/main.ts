@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, screen, Tray
 import path from 'path';
 import fs from 'fs';
 import { pathToFileURL } from 'url';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, ChildProcess, execFile } from 'child_process';
 import { LauncherStore } from './store';
 import { scanEpicGames } from './scanners/epicScanner';
 import { scanGogGames } from './scanners/gogScanner';
@@ -31,6 +31,7 @@ import { steamOwnedService } from './services/steamOwnedService';
 import { ubisoftDirectService } from './services/ubisoftDirectService';
 import { eaDirectService } from './services/eaDirectService';
 import { xboxDirectService } from './services/xboxDirectService';
+import { hdrService } from './services/hdrService';
 import { updaterService } from './services/updaterService';
 import { Game, GamePlatform, LauncherSettings, ScanResult } from '../src/types/game';
 
@@ -629,6 +630,7 @@ const mergeSyncedCloudGame = (prev: Game | undefined, cg: Game): Game => {
     ...cg,
     favorite: prev.favorite || cg.favorite,
     hidden: prev.hidden || cg.hidden,
+    autoHdr: prev.autoHdr ?? cg.autoHdr,
     // @ts-ignore
     customCoverUrl: (prev as any).customCoverUrl,
     // @ts-ignore
@@ -2577,6 +2579,113 @@ async function openXboxAppOrInstaller(game: Game): Promise<void> {
   }
 }
 
+// HDR Control IPC
+ipcMain.handle('get-hdr-status', async () => {
+  return hdrService.getStatus();
+});
+
+ipcMain.handle('set-hdr-status', async (_event, enable: boolean) => {
+  const res = await hdrService.setHdr(Boolean(enable));
+  mainWindow?.webContents.send('hdr-status-changed', { supported: res.supported, enabled: res.enabled });
+  return res;
+});
+
+ipcMain.handle('toggle-hdr-status', async () => {
+  const res = await hdrService.toggleHdr();
+  mainWindow?.webContents.send('hdr-status-changed', { supported: res.supported, enabled: res.enabled });
+  return res;
+});
+
+function collectInstallDirExes(dirPath?: string, depth = 0, maxDepth = 3): string[] {
+  if (!dirPath || depth > maxDepth || !fs.existsSync(dirPath)) return [];
+  const results: string[] = [];
+  const ignored = /^(unins|crash|redist|vcredist|dxsetup|unitycrash|ue4prereq|ueprereq|easyanticheat|battleye|launcher|gamelaunchhelper)/i;
+  try {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.toLowerCase().endsWith('.exe')) {
+        if (!ignored.test(entry.name)) {
+          results.push(entry.name.toLowerCase());
+        }
+      } else if (entry.isDirectory() && depth < maxDepth) {
+        results.push(...collectInstallDirExes(path.join(dirPath, entry.name), depth + 1, maxDepth));
+      }
+    }
+  } catch {}
+  return Array.from(new Set(results));
+}
+
+function checkSteamAppRunning(appId: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFile(
+      'reg.exe',
+      ['query', `HKCU\\Software\\Valve\\Steam\\Apps\\${appId}`, '/v', 'Running'],
+      { windowsHide: true, timeout: 3000 },
+      (err, stdout) => {
+        if (err || !stdout) return resolve(false);
+        resolve(/Running\s+REG_DWORD\s+0x1\b/i.test(stdout));
+      }
+    );
+  });
+}
+
+function checkAnyExeRunning(exeNames: string[]): Promise<boolean> {
+  if (exeNames.length === 0) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    execFile(
+      'tasklist.exe',
+      ['/FO', 'CSV', '/NH'],
+      { windowsHide: true, timeout: 4000, maxBuffer: 4 * 1024 * 1024 },
+      (err, stdout) => {
+        if (err || !stdout) return resolve(false);
+        const lower = stdout.toLowerCase();
+        resolve(exeNames.some((exe) => lower.includes(`"${exe}"`)));
+      }
+    );
+  });
+}
+
+function monitorStoreGameSession(game: Game, startTime: number, onClosed: () => void): void {
+  const steamAppId = game.platform === 'steam' ? gameInstallationService.extractSteamAppId(game) : null;
+  const candidateExes = collectInstallDirExes(game.installPath);
+
+  if (!steamAppId && candidateExes.length === 0) {
+    setTimeout(onClosed, 15000);
+    return;
+  }
+
+  let detectedRunning = false;
+  let closed = false;
+
+  const timer = setInterval(async () => {
+    if (closed) {
+      clearInterval(timer);
+      return;
+    }
+
+    let isRunningNow = false;
+    if (steamAppId) {
+      isRunningNow = await checkSteamAppRunning(steamAppId);
+    }
+    if (!isRunningNow && candidateExes.length > 0) {
+      isRunningNow = await checkAnyExeRunning(candidateExes);
+    }
+
+    if (isRunningNow) {
+      detectedRunning = true;
+      return;
+    }
+
+    const elapsedMs = Date.now() - startTime;
+    // Allow up to 35 seconds for store client splash screen / game startup before concluding it exited
+    if (detectedRunning || elapsedMs > 35000) {
+      closed = true;
+      clearInterval(timer);
+      onClosed();
+    }
+  }, 5000);
+}
+
 // Install Game IPC (for uninstalled cloud games)
 ipcMain.handle('install-game', async (_event, gameId: string) => {
   const games = store.getGames();
@@ -2660,6 +2769,36 @@ async function launchGameCore(gameId: string): Promise<{ success: boolean; messa
   const execPath = game.executablePath;
   const startTime = Date.now();
 
+  let hdrAutoActivated = false;
+  if (game.autoHdr) {
+    try {
+      const hdrBefore = await hdrService.getStatus();
+      if (hdrBefore.supported && !hdrBefore.enabled) {
+        const res = await hdrService.setHdr(true);
+        if (res.enabled) {
+          hdrAutoActivated = true;
+          mainWindow?.webContents.send('hdr-status-changed', { supported: res.supported, enabled: true });
+          // Brief pause so the monitor completes its HDR handshake before game swapchain init
+          await new Promise((r) => setTimeout(r, 1200));
+        }
+      }
+    } catch (hdrErr) {
+      console.warn('[HDR] Failed to auto-enable HDR before launch:', hdrErr);
+    }
+  }
+
+  const restoreHdrIfNeeded = async () => {
+    if (hdrAutoActivated) {
+      hdrAutoActivated = false;
+      try {
+        const res = await hdrService.setHdr(false);
+        mainWindow?.webContents.send('hdr-status-changed', { supported: res.supported, enabled: res.enabled });
+      } catch (err) {
+        console.warn('[HDR] Failed to restore HDR after game exit:', err);
+      }
+    }
+  };
+
   try {
     // 1. Epic Games Launcher Protocol (preferred for Epic games to sync cloud saves, achievements, and EOS)
     if (game.platform === 'epic') {
@@ -2684,13 +2823,14 @@ async function launchGameCore(gameId: string): Promise<{ success: boolean; messa
             mainWindow.hide();
           }
 
-          setTimeout(() => {
+          monitorStoreGameSession(game, startTime, () => {
             runningGames.delete(gameId);
+            restoreHdrIfNeeded();
             mainWindow?.webContents.send('game-status-changed', { gameId, isRunning: false, elapsedMinutes: 0 });
             if (currentSettings.minimizeToTray && mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.show();
             }
-          }, 10000);
+          });
 
           return { success: true };
         } catch (epicErr) {
@@ -2715,13 +2855,14 @@ async function launchGameCore(gameId: string): Promise<{ success: boolean; messa
         mainWindow.hide();
       }
 
-      setTimeout(() => {
+      monitorStoreGameSession(game, startTime, () => {
         runningGames.delete(gameId);
+        restoreHdrIfNeeded();
         mainWindow?.webContents.send('game-status-changed', { gameId, isRunning: false, elapsedMinutes: 0 });
         if (currentSettings.minimizeToTray && mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.show();
         }
-      }, 10000);
+      });
 
       return { success: true };
     }
@@ -2748,13 +2889,14 @@ async function launchGameCore(gameId: string): Promise<{ success: boolean; messa
         mainWindow.hide();
       }
 
-      setTimeout(() => {
+      monitorStoreGameSession(game, startTime, () => {
         runningGames.delete(gameId);
+        restoreHdrIfNeeded();
         mainWindow?.webContents.send('game-status-changed', { gameId, isRunning: false, elapsedMinutes: 0 });
         if (currentSettings.minimizeToTray && mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.show();
         }
-      }, 10000);
+      });
 
       return { success: true };
     }
@@ -2780,6 +2922,7 @@ async function launchGameCore(gameId: string): Promise<{ success: boolean; messa
     }
 
     if (!finalExe || !fs.existsSync(finalExe)) {
+      await restoreHdrIfNeeded();
       return {
         success: false,
         message: finalExe
@@ -2812,15 +2955,17 @@ async function launchGameCore(gameId: string): Promise<{ success: boolean; messa
           mainWindow.hide();
         }
 
-        setTimeout(() => {
+        monitorStoreGameSession(game, startTime, () => {
           runningGames.delete(gameId);
+          restoreHdrIfNeeded();
           mainWindow?.webContents.send('game-status-changed', { gameId, isRunning: false, elapsedMinutes: 1 });
           if (currentSettings.minimizeToTray && mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.show();
           }
-        }, 10000);
+        });
       } else {
         console.error('shell.openPath failed:', err);
+        restoreHdrIfNeeded();
         mainWindow?.webContents.send('game-status-changed', { gameId, isRunning: false });
       }
     };
@@ -2867,6 +3012,7 @@ async function launchGameCore(gameId: string): Promise<{ success: boolean; messa
       const minutesPlayed = durationMs < 60000 ? (durationMs >= 15000 ? 1 : 0) : Math.round(durationMs / 60000);
 
       runningGames.delete(gameId);
+      restoreHdrIfNeeded();
 
       if (minutesPlayed > 0) {
         const now = new Date();
