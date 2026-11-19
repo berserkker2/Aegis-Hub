@@ -326,10 +326,34 @@ function createWindow() {
     }, 300);
   };
 
+  let hdrCheckTimer: NodeJS.Timeout | null = null;
+  const syncHdrStatusToWindow = (delayMs = 120) => {
+    if (hdrCheckTimer) clearTimeout(hdrCheckTimer);
+    hdrCheckTimer = setTimeout(async () => {
+      try {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        const status = await hdrService.getStatus();
+        mainWindow.webContents.send('hdr-status-changed', {
+          supported: status.supported,
+          enabled: status.enabled,
+        });
+      } catch {}
+    }, delayMs);
+  };
+
+  screen.on('display-metrics-changed', () => {
+    syncHdrStatusToWindow(250);
+    setTimeout(() => syncHdrStatusToWindow(0), 1100);
+  });
+  screen.on('display-added', () => syncHdrStatusToWindow(300));
+  screen.on('display-removed', () => syncHdrStatusToWindow(300));
+
   mainWindow.on('resize', debouncedSave);
   mainWindow.on('move', debouncedSave);
+  mainWindow.on('show', () => syncHdrStatusToWindow(120));
   mainWindow.on('focus', () => {
     mainWindow?.webContents.send('main-window-focused', true);
+    syncHdrStatusToWindow(120);
     try {
       const currentGames = store.getGames();
       const { updatedCount, games } = steamPlaytimeService.syncGamesPlaytime(currentGames, store);

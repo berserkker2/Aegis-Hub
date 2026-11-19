@@ -23,28 +23,58 @@ export const TitleBar: React.FC<TitleBarProps> = React.memo(({
   const [hdrEnabled, setHdrEnabled] = useState(false);
   const [hdrSwitching, setHdrSwitching] = useState(false);
 
+  const refreshHdrStatus = React.useCallback(() => {
+    if (!window.api?.getHdrStatus) return;
+    window.api
+      .getHdrStatus()
+      .then((status) => {
+        const nextSupported = Boolean(status?.supported);
+        const nextEnabled = Boolean(status?.enabled);
+        setHdrSupported((prev) => (prev === nextSupported ? prev : nextSupported));
+        setHdrEnabled((prev) => (prev === nextEnabled ? prev : nextEnabled));
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (window.api?.isMaximized) {
       window.api.isMaximized().then(setIsMaximized);
     }
 
-    if (window.api?.getHdrStatus) {
-      window.api
-        .getHdrStatus()
-        .then((status) => {
-          setHdrSupported(Boolean(status?.supported));
-          setHdrEnabled(Boolean(status?.enabled));
-        })
-        .catch(() => {});
-    }
+    refreshHdrStatus();
 
     let unsubHdr: (() => void) | undefined;
     if (window.api?.onHdrStatusChanged) {
       unsubHdr = window.api.onHdrStatusChanged((status) => {
-        setHdrSupported(Boolean(status?.supported));
-        setHdrEnabled(Boolean(status?.enabled));
+        const nextSupported = Boolean(status?.supported);
+        const nextEnabled = Boolean(status?.enabled);
+        setHdrSupported((prev) => (prev === nextSupported ? prev : nextSupported));
+        setHdrEnabled((prev) => (prev === nextEnabled ? prev : nextEnabled));
       });
     }
+
+    // Event-driven HDR detection: Chromium dynamic-range media query + window focus + Win+Alt+B shortcut
+    const mqHdr = window.matchMedia?.('(dynamic-range: high)');
+    const mqVideoHdr = window.matchMedia?.('(video-dynamic-range: high)');
+    const handleMediaHdrChange = () => {
+      refreshHdrStatus();
+      window.setTimeout(refreshHdrStatus, 700);
+    };
+    mqHdr?.addEventListener?.('change', handleMediaHdrChange);
+    mqVideoHdr?.addEventListener?.('change', handleMediaHdrChange);
+
+    const handleWindowFocus = () => refreshHdrStatus();
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleWindowFocus);
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.altKey && (e.key === 'b' || e.key === 'B' || e.code === 'KeyB')) {
+        window.setTimeout(refreshHdrStatus, 750);
+        window.setTimeout(refreshHdrStatus, 1500);
+      }
+    };
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('keydown', handleKeyUp);
 
     // Check updates silently in background on startup if autoCheckUpdates is enabled (default true)
     if (window.api?.checkForUpdates) {
@@ -65,8 +95,14 @@ export const TitleBar: React.FC<TitleBarProps> = React.memo(({
 
     return () => {
       if (unsubHdr) unsubHdr();
+      mqHdr?.removeEventListener?.('change', handleMediaHdrChange);
+      mqVideoHdr?.removeEventListener?.('change', handleMediaHdrChange);
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleWindowFocus);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('keydown', handleKeyUp);
     };
-  }, []);
+  }, [refreshHdrStatus]);
 
   const handleToggleHdr = async () => {
     if (!window.api?.toggleHdrStatus || hdrSwitching) return;
@@ -146,6 +182,7 @@ export const TitleBar: React.FC<TitleBarProps> = React.memo(({
         {hdrSupported && (
           <button
             onClick={handleToggleHdr}
+            onMouseEnter={refreshHdrStatus}
             disabled={hdrSwitching}
             title={hdrEnabled ? 'Windows HDR is ON — click to turn OFF' : 'Windows HDR is OFF — click to turn ON'}
             className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border transition cursor-pointer disabled:opacity-60 ${
